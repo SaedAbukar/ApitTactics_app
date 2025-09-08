@@ -10,7 +10,7 @@ data class GameTactic(
 
     var name: String = "",
     var description: String = "",
-    var isPremade: Boolean = false,
+    var is_premade: Boolean = false,
 
     @ManyToOne
     @JoinColumn(name = "user_id")

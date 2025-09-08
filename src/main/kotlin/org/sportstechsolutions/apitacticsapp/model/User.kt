@@ -1,13 +1,14 @@
 package org.sportstechsolutions.apitacticsapp.model
 import jakarta.persistence.*
 @Entity
-@Table(name = "user")
+@Table(name = "app_user") // ✅ avoid reserved keyword 'user'
 data class User(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Int = 0,
 
     var email: String = "",
     var password: String = "",
+
     @Enumerated(EnumType.STRING)
     var role: UserRole = UserRole.USER,
 

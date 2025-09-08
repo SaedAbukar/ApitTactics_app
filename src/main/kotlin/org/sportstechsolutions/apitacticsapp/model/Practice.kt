@@ -10,8 +10,7 @@ data class Practice(
 
     var name: String = "",
     var description: String = "",
-
-    var isPremade: Boolean = false,
+    var is_premade: Boolean = false, // ✅ snake_case
 
     @ManyToOne
     @JoinColumn(name = "user_id")

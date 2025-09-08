@@ -13,7 +13,7 @@ data class Session(
 
     @ManyToOne
     @JoinColumn(name = "user_id")
-    var owner: User? = null, // nullable if ownership can be through group only
+    var owner: User? = null,
 
     @OneToMany(mappedBy = "session", cascade = [CascadeType.ALL], orphanRemoval = true)
     val steps: MutableList<Step> = mutableListOf(),
