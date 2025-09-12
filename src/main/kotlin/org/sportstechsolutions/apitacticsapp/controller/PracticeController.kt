@@ -18,12 +18,12 @@ class PracticeController(private val practiceService: PracticeService) {
         return ResponseEntity.ok(practiceService.getPracticesByUserId(userId))
     }
 
-    /*@GetMapping("/{id}")
+    @GetMapping("/{id}")
     fun getPracticeById(@PathVariable id: Int): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
         val practice = practiceService.getPracticeById(id, userId)
         return ResponseEntity.ok(practice)
-    }*/
+    }
 
     @PostMapping
     fun createPractice(@RequestBody request: PracticeRequest): ResponseEntity<PracticeResponse> {

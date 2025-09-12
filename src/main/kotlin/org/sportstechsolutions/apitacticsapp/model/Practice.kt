@@ -10,18 +10,19 @@ data class Practice(
 
     var name: String = "",
     var description: String = "",
-    var is_premade: Boolean = false, // ✅ snake_case
+    var is_premade: Boolean = false,
 
     @ManyToOne
     @JoinColumn(name = "user_id")
     var owner: User? = null,
 
-    @OneToMany(mappedBy = "practice", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val userAccess: MutableList<UserPracticeAccess> = mutableListOf(),
-
-    @OneToMany(mappedBy = "practice", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val groupAccess: MutableList<GroupPracticeAccess> = mutableListOf(),
-
-    @ManyToMany(mappedBy = "practices")
+    @ManyToMany(cascade = [CascadeType.PERSIST, CascadeType.MERGE])
+    @JoinTable(
+        name = "session_practice",
+        joinColumns = [JoinColumn(name = "practice_id")],
+        inverseJoinColumns = [JoinColumn(name = "session_id")]
+    )
     val sessions: MutableList<Session> = mutableListOf()
 )
+
+

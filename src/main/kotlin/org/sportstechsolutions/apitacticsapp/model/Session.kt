@@ -18,25 +18,9 @@ data class Session(
     @OneToMany(mappedBy = "session", cascade = [CascadeType.ALL], orphanRemoval = true)
     val steps: MutableList<Step> = mutableListOf(),
 
-    @OneToMany(mappedBy = "session", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val userAccess: MutableList<UserSessionAccess> = mutableListOf(),
-
-    @OneToMany(mappedBy = "session", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val groupAccess: MutableList<GroupSessionAccess> = mutableListOf(),
-
-    @ManyToMany
-    @JoinTable(
-        name = "session_practice",
-        joinColumns = [JoinColumn(name = "session_id")],
-        inverseJoinColumns = [JoinColumn(name = "practice_id")]
-    )
+    @ManyToMany(mappedBy = "sessions")
     val practices: MutableList<Practice> = mutableListOf(),
 
-    @ManyToMany
-    @JoinTable(
-        name = "session_game_tactic",
-        joinColumns = [JoinColumn(name = "session_id")],
-        inverseJoinColumns = [JoinColumn(name = "game_tactic_id")]
-    )
+    @ManyToMany(mappedBy = "sessions")
     val gameTactics: MutableList<GameTactic> = mutableListOf()
 )

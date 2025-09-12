@@ -22,6 +22,11 @@ data class GameTactic(
     @OneToMany(mappedBy = "gameTactic", cascade = [CascadeType.ALL], orphanRemoval = true)
     val groupAccess: MutableList<GroupGameTacticAccess> = mutableListOf(),
 
-    @ManyToMany(mappedBy = "gameTactics")
+    @ManyToMany(cascade = [CascadeType.PERSIST, CascadeType.MERGE])
+    @JoinTable(
+        name = "session_game_tactic",
+        joinColumns = [JoinColumn(name = "game_tactic_id")],
+        inverseJoinColumns = [JoinColumn(name = "session_id")]
+    )
     val sessions: MutableList<Session> = mutableListOf()
 )

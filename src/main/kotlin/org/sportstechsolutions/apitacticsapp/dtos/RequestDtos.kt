@@ -22,10 +22,11 @@ data class StepRequest(
     val cones: List<ConeRequest> = emptyList()
 )
 
-data class PlayerRequest(val x: Int, val y: Int, val number: Int, val color: String, val teamId: Int?)
+data class PlayerRequest(val x: Int, val y: Int, val number: Int, val color: String, val teamName: String?)
 data class BallRequest(val x: Int, val y: Int, val color: String?)
 data class GoalRequest(val x: Int, val y: Int, val width: Int, val depth: Int, val color: String?)
-data class TeamRequest(val id: Int?, val name: String, val color: String)
+data class TeamRequest(val name: String, val color: String)
 data class FormationRequest(val id: Int?, val name: String, val positions: List<FormationPositionRequest> = emptyList())
-data class FormationPositionRequest(val x: Double, val y: Double, val teamId: Int?)
+data class FormationPositionRequest(val x: Double, val y: Double, val teamName: String?, val teamColor: String?)
+
 data class ConeRequest(val x: Int, val y: Int, val color: String?)

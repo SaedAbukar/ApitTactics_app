@@ -2,9 +2,33 @@ package org.sportstechsolutions.apitacticsapp.mappers
 
 import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.model.*
+import org.sportstechsolutions.apitacticsapp.repository.TeamRepository
 
-fun List<FormationPositionRequest>.toFormationPositions(): MutableList<FormationPosition> =
-    map { FormationPosition(x = it.x, y = it.y, team = it.teamId?.let { Team(id = it) }) }.toMutableList()
+fun List<FormationPositionRequest>.toFormationPositions(
+    user: User,
+    teamRepository: TeamRepository
+): MutableList<FormationPosition> {
+    return this.map { req ->
+        val team = req.teamName?.let { name ->
+            teamRepository.findByOwnerIdAndName(user.id, name)
+                ?: teamRepository.save(
+                    Team(
+                        name = name,
+                        color = req.teamColor ?: "white", // use request color, fallback to white
+                        owner = user
+                    )
+                )
+        }
+
+        FormationPosition(
+            x = req.x,
+            y = req.y,
+            team = team
+        )
+    }.toMutableList()
+}
+
+
 
 object PracticeMapper {
     fun toPracticeResponse(practice: Practice): PracticeResponse {
