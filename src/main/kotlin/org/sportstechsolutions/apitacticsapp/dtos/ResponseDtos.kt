@@ -8,6 +8,14 @@ data class PracticeResponse(
     val sessions: List<SessionResponse>
 )
 
+data class GameTacticResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    val sessions: List<SessionResponse>
+)
+
 data class SessionResponse(
     val id: Int,
     val name: String,

@@ -41,7 +41,7 @@ object PracticeMapper {
         )
     }
 
-    private fun toSessionResponse(session: Session): SessionResponse {
+    internal fun toSessionResponse(session: Session): SessionResponse {
         return SessionResponse(
             id = session.id,
             name = session.name,
@@ -68,3 +68,17 @@ object PracticeMapper {
         )
     }
 }
+
+object GameTacticMapper {
+
+    fun toGameTacticResponse(gameTactic: GameTactic): GameTacticResponse {
+        return GameTacticResponse(
+            id = gameTactic.id,
+            name = gameTactic.name,
+            description = gameTactic.description,
+            isPremade = gameTactic.is_premade,
+            sessions = gameTactic.sessions.map { PracticeMapper.toSessionResponse(it) }
+        )
+    }
+}
+

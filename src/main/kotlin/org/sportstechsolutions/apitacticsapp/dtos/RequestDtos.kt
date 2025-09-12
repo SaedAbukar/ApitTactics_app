@@ -7,6 +7,13 @@ data class PracticeRequest(
     val sessions: List<SessionRequest> = emptyList()
 )
 
+data class GameTacticRequest(
+    val name: String,
+    val description: String,
+    val isPremade: Boolean = false,
+    val sessions: List<SessionRequest> = emptyList()
+)
+
 data class SessionRequest(
     val name: String,
     val description: String,
