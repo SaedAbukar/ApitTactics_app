@@ -1,0 +1,152 @@
+[
+  /* ---------------- Practice 1: Offensive Drills ---------------- */
+  {
+    "name": "Offensive Drills",
+    "description": "Practice focusing on attacking plays",
+    "isPremade": false,
+    "sessions": [
+      {
+        "name": "Session 1 - Warm-up",
+        "description": "Warm-up session with basic movements",
+        "steps": [
+          {
+            "players": [
+              {"x": 10, "y": 20, "number": 7, "color": "red", "teamId": 1},
+              {"x": 15, "y": 25, "number": 10, "color": "blue", "teamId": 2}
+            ],
+            "balls": [{"x": 5, "y": 5, "color": "white"}],
+            "goals": [{"x": 0, "y": 0, "width": 8, "depth": 2, "color": "white"}],
+            "teams": [
+              {"id": 1, "name": "Red Team", "color": "red"},
+              {"id": 2, "name": "Blue Team", "color": "blue"}
+            ],
+            "formations": [
+              {
+                "id": null,
+                "name": "4-4-2",
+                "positions": [
+                  {"x": 1.0, "y": 2.0, "teamId": 1},
+                  {"x": 3.0, "y": 4.0, "teamId": 2}
+                ]
+              }
+            ],
+            "cones": [{"x": 2, "y": 2, "color": "yellow"}, {"x": 3, "y": 3, "color": "yellow"}]
+          }
+        ]
+      }
+    ]
+  },
+
+  /* ---------------- Practice 2: Defensive Drills ---------------- */
+  {
+    "name": "Defensive Drills",
+    "description": "Practice focusing on defensive plays",
+    "isPremade": true,
+    "sessions": [
+      {
+        "name": "Session 1 - Defense Formation",
+        "description": "Formation setup for defensive strategy",
+        "steps": [
+          {
+            "players": [
+              {"x": 20, "y": 30, "number": 5, "color": "blue", "teamId": 2},
+              {"x": 25, "y": 35, "number": 6, "color": "red", "teamId": 1}
+            ],
+            "balls": [{"x": 10, "y": 10, "color": "white"}],
+            "goals": [{"x": 2, "y": 2, "width": 6, "depth": 2, "color": "white"}],
+            "teams": [
+              {"id": 1, "name": "Red Team", "color": "red"},
+              {"id": 2, "name": "Blue Team", "color": "blue"}
+            ],
+            "formations": [
+              {
+                "id": null,
+                "name": "5-3-2",
+                "positions": [
+                  {"x": 1.5, "y": 2.5, "teamId": 1},
+                  {"x": 3.5, "y": 4.5, "teamId": 2}
+                ]
+              }
+            ],
+            "cones": [{"x": 5, "y": 5, "color": "red"}, {"x": 6, "y": 6, "color": "red"}]
+          }
+        ]
+      }
+    ]
+  },
+
+  /* ---------------- Practice 3: Mixed Drills ---------------- */
+  {
+    "name": "Mixed Drills",
+    "description": "Combination of offensive and defensive exercises",
+    "isPremade": false,
+    "sessions": [
+      {
+        "name": "Session 1 - Warm-up",
+        "description": "Start with warm-up",
+        "steps": [
+          {
+            "players": [
+              {"x": 5, "y": 5, "number": 1, "color": "white", "teamId": 1},
+              {"x": 6, "y": 6, "number": 2, "color": "black", "teamId": 2}
+            ],
+            "balls": [{"x": 1, "y": 1, "color": "white"}],
+            "goals": [],
+            "teams": [],
+            "formations": [],
+            "cones": []
+          }
+        ]
+      }
+    ]
+  },
+
+  /* ---------------- Practice 4: Special Set Pieces ---------------- */
+  {
+    "name": "Set Pieces",
+    "description": "Practices for corner kicks and free kicks",
+    "isPremade": false,
+    "sessions": [
+      {
+        "name": "Session 1 - Corner Kicks",
+        "description": "Practice different corner kick scenarios",
+        "steps": [
+          {
+            "players": [
+              {"x": 10, "y": 5, "number": 11, "color": "red", "teamId": 1},
+              {"x": 15, "y": 5, "number": 4, "color": "blue", "teamId": 2}
+            ],
+            "balls": [{"x": 12, "y": 6, "color": "white"}],
+            "goals": [{"x": 0, "y": 0, "width": 8, "depth": 2, "color": "white"}],
+            "teams": [{"id": 1, "name": "Red Team", "color": "red"}],
+            "formations": [],
+            "cones": [{"x": 2, "y": 2, "color": "yellow"}]
+          }
+        ]
+      }
+    ]
+  },
+
+  /* ---------------- Practice 5: Goalkeeper Training ---------------- */
+  {
+    "name": "Goalkeeper Training",
+    "description": "Specific drills for goalkeepers",
+    "isPremade": true,
+    "sessions": [
+      {
+        "name": "Session 1 - Reflex Drills",
+        "description": "Drills to improve reflexes",
+        "steps": [
+          {
+            "players": [{"x": 0, "y": 0, "number": 1, "color": "green", "teamId": 1}],
+            "balls": [{"x": 1, "y": 1, "color": "white"}],
+            "goals": [{"x": 0, "y": 0, "width": 2, "depth": 2, "color": "white"}],
+            "teams": [{"id": 1, "name": "Green Team", "color": "green"}],
+            "formations": [],
+            "cones": []
+          }
+        ]
+      }
+    ]
+  }
+]
