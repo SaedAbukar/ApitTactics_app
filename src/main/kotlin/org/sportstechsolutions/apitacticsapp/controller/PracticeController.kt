@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
+import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.PracticeRequest
 import org.sportstechsolutions.apitacticsapp.dtos.PracticeResponse
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
@@ -26,7 +27,7 @@ class PracticeController(private val practiceService: PracticeService) {
     }
 
     @PostMapping
-    fun createPractice(@RequestBody request: PracticeRequest): ResponseEntity<PracticeResponse> {
+    fun createPractice(@RequestBody @Valid request: PracticeRequest): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
         val practice = practiceService.createPractice(userId, request)
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -34,7 +35,7 @@ class PracticeController(private val practiceService: PracticeService) {
     }
 
     @PutMapping("/{id}")
-    fun updatePractice(@PathVariable id: Int, @RequestBody request: PracticeRequest): ResponseEntity<PracticeResponse> {
+    fun updatePractice(@PathVariable id: Int, @RequestBody @Valid request: PracticeRequest): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
         val practice = practiceService.updatePractice(userId, id, request)
         return ResponseEntity.ok(practiceService.getPracticesByUserId(userId).first { it.id == practice.id })

@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
+import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.GameTacticRequest
 import org.sportstechsolutions.apitacticsapp.dtos.GameTacticResponse
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
@@ -26,7 +27,7 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
     }
 
     @PostMapping
-    fun createGameTactic(@RequestBody request: GameTacticRequest): ResponseEntity<GameTacticResponse> {
+    fun createGameTactic(@RequestBody @Valid request: GameTacticRequest): ResponseEntity<GameTacticResponse> {
         val userId = SecurityUtils.getCurrentUserId()
         val tactic = gameTacticService.createGameTactic(userId, request)
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -34,7 +35,7 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
     }
 
     @PutMapping("/{id}")
-    fun updateGameTactic(@PathVariable id: Int, @RequestBody request: GameTacticRequest): ResponseEntity<GameTacticResponse> {
+    fun updateGameTactic(@PathVariable id: Int, @RequestBody @Valid request: GameTacticRequest): ResponseEntity<GameTacticResponse> {
         val userId = SecurityUtils.getCurrentUserId()
         val tactic = gameTacticService.updateGameTactic(userId, id, request)
         return ResponseEntity.ok(gameTacticService.getGameTacticsByUserId(userId).first { it.id == tactic.id })

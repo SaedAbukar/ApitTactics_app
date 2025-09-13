@@ -50,7 +50,7 @@ object PracticeMapper {
         )
     }
 
-    private fun toStepResponse(step: Step): StepResponse {
+    internal fun toStepResponse(step: Step): StepResponse {
         return StepResponse(
             id = step.id,
             players = step.players.map { p -> PlayerResponse(p.id, p.x, p.y, p.number, p.color, p.team?.id) },
@@ -78,6 +78,17 @@ object GameTacticMapper {
             description = gameTactic.description,
             isPremade = gameTactic.is_premade,
             sessions = gameTactic.sessions.map { PracticeMapper.toSessionResponse(it) }
+        )
+    }
+}
+
+object SessionMapper {
+    fun toSessionResponse(session: Session): SessionResponse {
+        return SessionResponse(
+            id = session.id,
+            name = session.name,
+            description = session.description,
+            steps = session.steps.map { PracticeMapper.toStepResponse(it) }
         )
     }
 }

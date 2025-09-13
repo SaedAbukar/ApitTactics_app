@@ -1,39 +1,142 @@
 package org.sportstechsolutions.apitacticsapp.dtos
 
+import jakarta.validation.Valid
+import jakarta.validation.constraints.*
+
 data class PracticeRequest(
+    @field:NotBlank(message = "Name is required")
     val name: String,
+
+    @field:NotBlank(message = "Description is required")
     val description: String,
+
     val isPremade: Boolean = false,
-    val sessions: List<SessionRequest> = emptyList()
+
+    @field:Valid
+    val sessions: List<@Valid SessionRequest> = emptyList()
 )
 
 data class GameTacticRequest(
+    @field:NotBlank(message = "Name is required")
     val name: String,
+
+    @field:NotBlank(message = "Description is required")
     val description: String,
+
     val isPremade: Boolean = false,
-    val sessions: List<SessionRequest> = emptyList()
+
+    @field:Valid
+    val sessions: List<@Valid SessionRequest> = emptyList()
 )
 
 data class SessionRequest(
+    @field:NotBlank(message = "Name is required")
     val name: String,
+
+    @field:NotBlank(message = "Description is required")
     val description: String,
-    val steps: List<StepRequest> = emptyList()
+
+    @field:Valid
+    val steps: List<@Valid StepRequest> = emptyList()
 )
 
 data class StepRequest(
-    val players: List<PlayerRequest> = emptyList(),
-    val balls: List<BallRequest> = emptyList(),
-    val goals: List<GoalRequest> = emptyList(),
-    val teams: List<TeamRequest> = emptyList(),
-    val formations: List<FormationRequest> = emptyList(),
-    val cones: List<ConeRequest> = emptyList()
+    @field:Valid
+    val players: List<@Valid PlayerRequest> = emptyList(),
+
+    @field:Valid
+    val balls: List<@Valid BallRequest> = emptyList(),
+
+    @field:Valid
+    val goals: List<@Valid GoalRequest> = emptyList(),
+
+    @field:Valid
+    val teams: List<@Valid TeamRequest> = emptyList(),
+
+    @field:Valid
+    val formations: List<@Valid FormationRequest> = emptyList(),
+
+    @field:Valid
+    val cones: List<@Valid ConeRequest> = emptyList()
 )
 
-data class PlayerRequest(val x: Int, val y: Int, val number: Int, val color: String, val teamName: String?)
-data class BallRequest(val x: Int, val y: Int, val color: String?)
-data class GoalRequest(val x: Int, val y: Int, val width: Int, val depth: Int, val color: String?)
-data class TeamRequest(val name: String, val color: String)
-data class FormationRequest(val id: Int?, val name: String, val positions: List<FormationPositionRequest> = emptyList())
-data class FormationPositionRequest(val x: Double, val y: Double, val teamName: String?, val teamColor: String?)
+data class PlayerRequest(
+    @field:Min(value = 0, message = "X coordinate must be non-negative")
+    val x: Int,
 
-data class ConeRequest(val x: Int, val y: Int, val color: String?)
+    @field:Min(value = 0, message = "Y coordinate must be non-negative")
+    val y: Int,
+
+    @field:Min(value = 1, message = "Player number must be at least 1")
+    val number: Int,
+
+    @field:NotBlank(message = "Color is required")
+    val color: String,
+
+    val teamName: String? = null
+)
+
+data class BallRequest(
+    @field:Min(value = 0, message = "X coordinate must be non-negative")
+    val x: Int,
+
+    @field:Min(value = 0, message = "Y coordinate must be non-negative")
+    val y: Int,
+
+    val color: String? = null
+)
+
+data class GoalRequest(
+    @field:Min(value = 0, message = "X coordinate must be non-negative")
+    val x: Int,
+
+    @field:Min(value = 0, message = "Y coordinate must be non-negative")
+    val y: Int,
+
+    @field:Min(value = 1, message = "Width must be at least 1")
+    val width: Int,
+
+    @field:Min(value = 1, message = "Depth must be at least 1")
+    val depth: Int,
+
+    val color: String? = null
+)
+
+data class TeamRequest(
+    @field:NotBlank(message = "Team name is required")
+    val name: String,
+
+    @field:NotBlank(message = "Team color is required")
+    val color: String
+)
+
+data class FormationRequest(
+    val id: Int? = null,
+
+    @field:NotBlank(message = "Formation name is required")
+    val name: String,
+
+    @field:Valid
+    val positions: List<@Valid FormationPositionRequest> = emptyList()
+)
+
+data class FormationPositionRequest(
+    @field:Min(value = 0, message = "X coordinate must be non-negative")
+    val x: Double,
+
+    @field:Min(value = 0, message = "Y coordinate must be non-negative")
+    val y: Double,
+
+    val teamName: String? = null,
+    val teamColor: String? = null
+)
+
+data class ConeRequest(
+    @field:Min(value = 0, message = "X coordinate must be non-negative")
+    val x: Int,
+
+    @field:Min(value = 0, message = "Y coordinate must be non-negative")
+    val y: Int,
+
+    val color: String? = null
+)
