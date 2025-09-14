@@ -2,6 +2,20 @@ package org.sportstechsolutions.apitacticsapp.dtos
 
 import jakarta.validation.Valid
 import jakarta.validation.constraints.*
+import org.sportstechsolutions.apitacticsapp.model.AccessRole
+import jakarta.validation.constraints.NotNull
+
+data class ShareSessionRequest(
+    @field:NotNull val sessionId: Int,
+    @field:NotNull val targetId: Int, // either userId or groupId depending on context
+    val role: AccessRole = AccessRole.VIEWER
+)
+
+data class RevokeSessionRequest(
+    @field:NotNull val sessionId: Int,
+    @field:NotNull val targetId: Int
+)
+
 
 data class PracticeRequest(
     @field:NotBlank(message = "Name is required")

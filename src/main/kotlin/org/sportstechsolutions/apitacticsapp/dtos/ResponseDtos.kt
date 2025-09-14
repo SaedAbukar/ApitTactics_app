@@ -1,5 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.dtos
 
+import org.sportstechsolutions.apitacticsapp.model.AccessRole
+
 data class PracticeResponse(
     val id: Int,
     val name: String,
@@ -21,6 +23,19 @@ data class SessionResponse(
     val name: String,
     val description: String,
     val steps: List<StepResponse>
+)
+
+data class TabbedResponse<T>(
+    val personalItems: List<T> = emptyList(),
+    val userSharedItems: List<T> = emptyList(),
+    val groupSharedItems: List<T> = emptyList()
+)
+
+data class ShareResponse(
+    val sessionId: Int,
+    val targetId: Int,
+    val role: AccessRole,
+    val message: String
 )
 
 data class StepResponse(
