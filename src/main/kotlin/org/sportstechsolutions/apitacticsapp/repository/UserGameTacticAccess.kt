@@ -1,0 +1,9 @@
+package org.sportstechsolutions.apitacticsapp.repository
+
+import org.sportstechsolutions.apitacticsapp.model.UserGameTacticAccess
+import org.springframework.data.jpa.repository.JpaRepository
+
+interface UserGameTacticAccessRepository : JpaRepository<UserGameTacticAccess, Int> {
+    fun findByUserId(userId: Int): List<UserGameTacticAccess>
+    fun findByUserIdAndGameTacticId(userId: Int, tacticId: Int): UserGameTacticAccess?
+}

@@ -4,17 +4,46 @@ import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
-import org.sportstechsolutions.apitacticsapp.repository.GameTacticRepository
-import org.sportstechsolutions.apitacticsapp.dtos.EntityMappers
+import org.sportstechsolutions.apitacticsapp.repository.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 class GameTacticService(
     private val gameTacticRepository: GameTacticRepository,
+    private val userGameTacticAccessRepository: UserGameTacticAccessRepository,
+    private val groupGameTacticAccessRepository: GroupGameTacticAccessRepository,
     private val entityMappers: EntityMappers
 ) {
 
+    // ------------------------------------------
+    // Tabbed view (personal, user shared, group shared)
+    // ------------------------------------------
+    @Transactional(readOnly = true)
+    fun getGameTacticsForTabs(userId: Int): TabbedResponse<GameTacticResponse> {
+        val personal = gameTacticRepository.findByOwnerId(userId)
+            .map { entityMappers.loadFullGameTactic(it) }
+
+        val userShared = userGameTacticAccessRepository.findByUserId(userId)
+            .filter { it.role != AccessRole.NONE }
+            .mapNotNull { it.gameTactic }
+            .map { entityMappers.loadFullGameTactic(it) }
+
+        val groupShared = groupGameTacticAccessRepository.findByGroupMemberId(userId)
+            .mapNotNull { it.gameTactic }
+            .distinct()
+            .map { entityMappers.loadFullGameTactic(it) }
+
+        return TabbedResponse(
+            personalItems = personal,
+            userSharedItems = userShared,
+            groupSharedItems = groupShared
+        )
+    }
+
+    // ------------------------------------------
+    // CRUD
+    // ------------------------------------------
     @Transactional
     fun createGameTactic(userId: Int, request: GameTacticRequest): GameTacticResponse {
         val gameTactic = GameTactic(
@@ -33,16 +62,18 @@ class GameTacticService(
     }
 
     @Transactional
-    fun updateGameTactic(userId: Int, gameTacticId: Int, request: GameTacticRequest): GameTacticResponse {
+    fun updateGameTactic(userId: Int, gameTacticId: Int, request: GameTacticRequest, groupId: Int? = null): GameTacticResponse {
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        if (gameTactic.owner?.id != userId) throw UnauthorizedException("Not allowed")
+        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
+        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
+
+        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this game tactic")
 
         gameTactic.name = request.name
         gameTactic.description = request.description
         gameTactic.is_premade = request.isPremade
-
         gameTactic.sessions.forEach { it.gameTactics.remove(gameTactic) }
         gameTactic.sessions.clear()
 
@@ -55,28 +86,50 @@ class GameTacticService(
     }
 
     @Transactional
-    fun deleteGameTactic(userId: Int, gameTacticId: Int) {
+    fun deleteGameTactic(userId: Int, gameTacticId: Int, groupId: Int? = null) {
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        if (gameTactic.owner?.id != userId) throw UnauthorizedException("Not allowed")
+        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
+        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
+
+        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this game tactic")
 
         gameTacticRepository.delete(gameTactic)
     }
 
     @Transactional(readOnly = true)
-    fun getGameTacticsByUserId(userId: Int): List<GameTacticResponse> {
-        return gameTacticRepository.findByOwnerId(userId)
-            .map { entityMappers.loadFullGameTactic(it) }
-    }
-
-    @Transactional(readOnly = true)
-    fun getGameTacticById(gameTacticId: Int, userId: Int): GameTacticResponse {
+    fun getGameTacticById(gameTacticId: Int, userId: Int, groupId: Int? = null): GameTacticResponse {
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        if (gameTactic.owner?.id != userId) throw UnauthorizedException("Not allowed")
+        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
+        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
 
+        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this game tactic")
         return entityMappers.loadFullGameTactic(gameTactic)
+    }
+
+    // ------------------------------------------
+    // Access role resolver
+    // ------------------------------------------
+    fun getUserRoleForGameTactic(userId: Int, gameTacticId: Int, groupId: Int? = null): AccessRole {
+        val gameTactic = gameTacticRepository.findById(gameTacticId)
+            .orElseThrow { ResourceNotFoundException("Game tactic not found") }
+
+        if (gameTactic.owner?.id == userId) return AccessRole.OWNER
+
+        val userAccess = userGameTacticAccessRepository.findByUserIdAndGameTacticId(userId, gameTacticId)
+        if (userAccess != null) return userAccess.role
+
+        val groupAccess = if (groupId != null) {
+            groupGameTacticAccessRepository.findByGameTacticIdAndGroupId(gameTacticId, groupId)
+                ?.takeIf { it.group?.members?.any { m -> m.id == userId } == true }
+        } else {
+            groupGameTacticAccessRepository.findByGameTacticId(gameTacticId)
+                ?.firstOrNull { it.group?.members?.any { m -> m.id == userId } == true }
+        }
+
+        return groupAccess?.role ?: AccessRole.NONE
     }
 }

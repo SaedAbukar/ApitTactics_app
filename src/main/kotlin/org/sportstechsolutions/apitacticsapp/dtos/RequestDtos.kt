@@ -16,6 +16,28 @@ data class RevokeSessionRequest(
     @field:NotNull val targetId: Int
 )
 
+data class SharePracticeRequest(
+    @field:NotNull val practiceId: Int,
+    @field:NotNull val targetId: Int, // either userId or groupId depending on context
+    val role: AccessRole = AccessRole.VIEWER
+)
+
+data class RevokePracticeRequest(
+    @field:NotNull val practiceId: Int,
+    @field:NotNull val targetId: Int
+)
+
+data class ShareGameTacticRequest(
+    @field:NotNull val gameTacticId: Int,
+    @field:NotNull val targetId: Int, // either userId or groupId depending on context
+    val role: AccessRole = AccessRole.VIEWER
+)
+
+data class RevokeGameTacticRequest(
+    @field:NotNull val gameTacticId: Int,
+    @field:NotNull val targetId: Int
+)
+
 
 data class PracticeRequest(
     @field:NotBlank(message = "Name is required")

@@ -1,8 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
-import org.sportstechsolutions.apitacticsapp.dtos.PracticeRequest
-import org.sportstechsolutions.apitacticsapp.dtos.PracticeResponse
+import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.PracticeService
 import org.springframework.http.HttpStatus
@@ -13,38 +12,61 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/practices")
 class PracticeController(private val practiceService: PracticeService) {
 
+    // -----------------------------
+    // GET TABBED PRACTICES
+    // -----------------------------
     @GetMapping
-    fun getMyPractices(): ResponseEntity<List<PracticeResponse>> {
+    fun getTabbedPractices(): ResponseEntity<TabbedResponse<PracticeResponse>> {
         val userId = SecurityUtils.getCurrentUserId()
-        return ResponseEntity.ok(practiceService.getPracticesByUserId(userId))
+        return ResponseEntity.ok(practiceService.getPracticesForTabs(userId))
     }
 
+    // -----------------------------
+    // GET SINGLE PRACTICE
+    // -----------------------------
     @GetMapping("/{id}")
-    fun getPracticeById(@PathVariable id: Int): ResponseEntity<PracticeResponse> {
+    fun getPracticeById(
+        @PathVariable id: Int,
+        @RequestParam(required = false) groupId: Int? = null
+    ): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
-        val practice = practiceService.getPracticeById(id, userId)
-        return ResponseEntity.ok(practice)
+        return ResponseEntity.ok(practiceService.getPracticeById(id, userId, groupId))
     }
 
+    // -----------------------------
+    // CREATE PRACTICE
+    // -----------------------------
     @PostMapping
     fun createPractice(@RequestBody @Valid request: PracticeRequest): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
         val practice = practiceService.createPractice(userId, request)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(practiceService.getPracticesByUserId(userId).first { it.id == practice.id })
+        return ResponseEntity.status(HttpStatus.CREATED).body(practice)
     }
 
+    // -----------------------------
+    // UPDATE PRACTICE
+    // -----------------------------
     @PutMapping("/{id}")
-    fun updatePractice(@PathVariable id: Int, @RequestBody @Valid request: PracticeRequest): ResponseEntity<PracticeResponse> {
+    fun updatePractice(
+        @PathVariable id: Int,
+        @RequestBody @Valid request: PracticeRequest,
+        @RequestParam(required = false) groupId: Int? = null
+    ): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
-        val practice = practiceService.updatePractice(userId, id, request)
-        return ResponseEntity.ok(practiceService.getPracticesByUserId(userId).first { it.id == practice.id })
+        val updated = practiceService.updatePractice(userId, id, request, groupId)
+        return ResponseEntity.ok(updated)
     }
 
+    // -----------------------------
+    // DELETE PRACTICE
+    // -----------------------------
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun deletePractice(@PathVariable id: Int) {
+    fun deletePractice(
+        @PathVariable id: Int,
+        @RequestParam(required = false) groupId: Int? = null
+    ) {
         val userId = SecurityUtils.getCurrentUserId()
-        practiceService.deletePractice(userId, id)
+        practiceService.deletePractice(userId, id, groupId)
     }
 }
