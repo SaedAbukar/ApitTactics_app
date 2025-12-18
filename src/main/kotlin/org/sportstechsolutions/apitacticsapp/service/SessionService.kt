@@ -75,6 +75,8 @@ class SessionService(
         else getUserRoleForSession(userId, sessionId, groupId)
 
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this session")
+
+        userSessionAccessRepository.deleteAllBySession(session)
         sessionRepository.delete(session)
     }
 

@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.exception
 
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.FieldError
@@ -24,12 +25,18 @@ data class FieldValidationError(
 @ControllerAdvice
 class GlobalExceptionHandler {
 
+    private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+
     // Validation errors from @Valid
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationExceptions(ex: MethodArgumentNotValidException): ResponseEntity<ApiError> {
         val errors = ex.bindingResult.allErrors.mapNotNull { error ->
             if (error is FieldError) {
-                FieldValidationError(error.field, error.rejectedValue, error.defaultMessage ?: "")
+                FieldValidationError(
+                    field = error.field,
+                    rejectedValue = error.rejectedValue,
+                    message = error.defaultMessage ?: ""
+                )
             } else null
         }
 
@@ -65,14 +72,19 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiError)
     }
 
-    // Fallback for all uncaught exceptions
+    // Fallback for all uncaught exceptions (sanitized)
     @ExceptionHandler(Exception::class)
     fun handleAll(ex: Exception): ResponseEntity<ApiError> {
+        // Log the full exception for debugging
+        logger.error("Unexpected error occurred", ex)
+
+        // Return sanitized message to client
         val apiError = ApiError(
             status = HttpStatus.INTERNAL_SERVER_ERROR.value(),
             error = "Internal Server Error",
-            message = ex.message ?: "An unexpected error occurred"
+            message = "An unexpected error occurred."
         )
+
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(apiError)
     }
 }

@@ -11,9 +11,10 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class GameTacticService(
     private val gameTacticRepository: GameTacticRepository,
+    private val sessionRepository: SessionRepository,
     private val userGameTacticAccessRepository: UserGameTacticAccessRepository,
     private val groupGameTacticAccessRepository: GroupGameTacticAccessRepository,
-    private val entityMappers: EntityMappers
+    private val entityMappers: EntityMappers,
 ) {
 
     // ------------------------------------------
@@ -45,7 +46,11 @@ class GameTacticService(
     // CRUD
     // ------------------------------------------
     @Transactional
-    fun createGameTactic(userId: Int, request: GameTacticRequest): GameTacticResponse {
+    fun createGameTactic(
+        userId: Int,
+        request: GameTacticRequest
+    ): GameTacticResponse {
+
         val gameTactic = GameTactic(
             name = request.name,
             description = request.description,
@@ -53,37 +58,84 @@ class GameTacticService(
             owner = User(id = userId)
         )
 
-        val sessions = request.sessions.map { entityMappers.toSession(it, gameTactic) }
-        sessions.forEach { it.gameTactics.add(gameTactic) }
-        gameTactic.sessions.addAll(sessions)
+        val sessionsToAttach = request.sessions.map { dto ->
+            dto.id?.let { sessionId ->
+                // EXISTING SESSION → attach only
+                sessionRepository.findById(sessionId)
+                    .orElseThrow {
+                        ResourceNotFoundException("Session $sessionId not found")
+                    }
+            } ?: run {
+                // NEW SESSION → create once
+                entityMappers.toSession(dto, gameTactic)
+            }
+        }
+
+        sessionsToAttach.forEach { session ->
+            session.gameTactics.add(gameTactic)
+        }
+        gameTactic.sessions.addAll(sessionsToAttach)
 
         val saved = gameTacticRepository.save(gameTactic)
         return entityMappers.loadFullGameTactic(saved)
     }
 
+
     @Transactional
-    fun updateGameTactic(userId: Int, gameTacticId: Int, request: GameTacticRequest, groupId: Int? = null): GameTacticResponse {
+    fun updateGameTactic(
+        userId: Int,
+        gameTacticId: Int,
+        request: GameTacticRequest,
+        groupId: Int? = null
+    ): GameTacticResponse {
+
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
+        val role = if (gameTactic.owner?.id == userId) {
+            AccessRole.OWNER
+        } else {
+            getUserRoleForGameTactic(userId, gameTacticId, groupId)
+        }
 
-        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this game tactic")
+        if (!role.canEdit()) {
+            throw UnauthorizedException("You do not have permission to edit this game tactic")
+        }
 
+        // ─── Update basic fields ─────────────────────────────
         gameTactic.name = request.name
         gameTactic.description = request.description
         gameTactic.is_premade = request.isPremade
-        gameTactic.sessions.forEach { it.gameTactics.remove(gameTactic) }
+
+        // ─── Detach old associations only ───────────────────
+        gameTactic.sessions.forEach { session ->
+            session.gameTactics.remove(gameTactic)
+        }
         gameTactic.sessions.clear()
 
-        val newSessions = request.sessions.map { entityMappers.toSession(it, gameTactic) }
-        newSessions.forEach { it.gameTactics.add(gameTactic) }
-        gameTactic.sessions.addAll(newSessions)
+        // ─── Attach existing OR create new sessions ─────────
+        val sessionsToAttach = request.sessions.map { dto ->
+            dto.id?.let { sessionId ->
+                // EXISTING SESSION → attach only
+                sessionRepository.findById(sessionId)
+                    .orElseThrow {
+                        ResourceNotFoundException("Session $sessionId not found")
+                    }
+            } ?: run {
+                // NEW SESSION → create once
+                entityMappers.toSession(dto, gameTactic)
+            }
+        }
+
+        sessionsToAttach.forEach { session ->
+            session.gameTactics.add(gameTactic)
+        }
+        gameTactic.sessions.addAll(sessionsToAttach)
 
         val updated = gameTacticRepository.save(gameTactic)
         return entityMappers.loadFullGameTactic(updated)
     }
+
 
     @Transactional
     fun deleteGameTactic(userId: Int, gameTacticId: Int, groupId: Int? = null) {
@@ -95,6 +147,7 @@ class GameTacticService(
 
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this game tactic")
 
+        userGameTacticAccessRepository.deleteAllByGameTactic(gameTactic)
         gameTacticRepository.delete(gameTactic)
     }
 

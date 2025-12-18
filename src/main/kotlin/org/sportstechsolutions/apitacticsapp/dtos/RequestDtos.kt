@@ -66,6 +66,7 @@ data class GameTacticRequest(
 )
 
 data class SessionRequest(
+    val id: Int? = null,
     @field:NotBlank(message = "Name is required")
     val name: String,
 
