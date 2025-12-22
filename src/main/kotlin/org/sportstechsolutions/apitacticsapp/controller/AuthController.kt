@@ -39,6 +39,19 @@ class AuthController(
         return ResponseEntity.ok(response)
     }
 
+    // ---------------- REFRESH ----------------
+    @PostMapping("/refresh")
+    fun refresh(@Valid @RequestBody request: RefreshTokenRequest): ResponseEntity<TokenResponse> {
+        val tokens = authService.refresh(request.refreshToken)
+
+        val response = TokenResponse(
+            accessToken = tokens.accessToken,
+            refreshToken = tokens.refreshToken
+        )
+
+        return ResponseEntity.ok(response)
+    }
+
 
     // ---------------- CURRENT USER ----------------
     @GetMapping("/me")

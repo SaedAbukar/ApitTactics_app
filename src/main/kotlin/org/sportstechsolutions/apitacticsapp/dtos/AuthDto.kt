@@ -24,6 +24,11 @@ data class LoginRequest(
     val password: String
 )
 
+data class RefreshTokenRequest(
+    @field:NotBlank
+    val refreshToken: String
+)
+
 data class TokenResponse(
     val accessToken: String,
     val refreshToken: String
