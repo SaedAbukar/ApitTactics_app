@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.dtos
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
@@ -37,6 +38,11 @@ data class UserResponse(
     val id: Int,
     val email: String,
     val role: String,
+
+    // Add this field
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean,
+
     val groups: List<GroupInfo> = emptyList(),
     val createdAt: String? = null,
     val lastLogin: String? = null
@@ -51,6 +57,8 @@ data class UserResponse(
                 id = user.id,
                 email = user.email,
                 role = user.role.name,
+                isPublic = user.isPublic,
+
                 groups = user.groups.map { GroupInfo(it.name) },
                 createdAt = user.createdAt?.toString(),
                 lastLogin = user.lastLogin?.toString()

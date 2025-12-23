@@ -1,9 +1,17 @@
 package org.sportstechsolutions.apitacticsapp.dtos
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.Valid
 import jakarta.validation.constraints.*
 import org.sportstechsolutions.apitacticsapp.model.AccessRole
 import jakarta.validation.constraints.NotNull
+
+data class UpdateVisibilityRequest(
+    @field:NotNull(message = "Visibility status is required")
+    @param:JsonProperty("isPublic") // Required for constructor/input
+    @get:JsonProperty("isPublic")   // Required for output (if ever returned)
+    val isPublic: Boolean = false
+)
 
 data class ShareSessionRequest(
     @field:NotNull val sessionId: Int,

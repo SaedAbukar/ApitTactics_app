@@ -1,6 +1,22 @@
 package org.sportstechsolutions.apitacticsapp.dtos
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.sportstechsolutions.apitacticsapp.model.AccessRole
+
+data class PublicUserResponse(
+    val id: Int,
+    val email: String,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean
+)
+
+data class UserProfileResponse(
+    val id: Int,
+    val email: String,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean,
+    val message: String? = null
+)
 
 data class PracticeResponse(
     val id: Int,

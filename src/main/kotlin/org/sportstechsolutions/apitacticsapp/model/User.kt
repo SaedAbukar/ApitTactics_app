@@ -14,6 +14,9 @@ data class User(
     @Enumerated(EnumType.STRING)
     var role: UserRole = UserRole.USER,
 
+    @Column(nullable = false)
+    var isPublic: Boolean = true,
+
     @OneToMany(mappedBy = "owner", cascade = [CascadeType.ALL])
     val sessions: MutableList<Session> = mutableListOf(),
 
