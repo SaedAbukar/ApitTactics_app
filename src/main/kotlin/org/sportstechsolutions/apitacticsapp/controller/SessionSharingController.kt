@@ -1,6 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
+import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.dtos.RevokeSessionRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareResponse
 import org.sportstechsolutions.apitacticsapp.dtos.ShareSessionRequest
@@ -14,20 +15,22 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/sessions/share")
 class SessionSharingController(private val sharingService: SessionSharingService) {
-    // -----------------------------
-    // SHARE WITH USER
-    // -----------------------------
+
+    // --- NEW: GET COLLABORATORS ---
+    @GetMapping("/{sessionId}/collaborators")
+    fun getCollaborators(@PathVariable sessionId: Int): ResponseEntity<List<CollaboratorDTO>> {
+        val currentUserId = SecurityUtils.getCurrentUserId()
+        val collaborators = sharingService.getSessionCollaborators(currentUserId, sessionId)
+        return ResponseEntity.ok(collaborators)
+    }
+
     @PostMapping("/user")
     fun shareWithUser(@RequestBody @Valid request: ShareSessionRequest): ResponseEntity<ShareResponse> {
         val currentUserId = SecurityUtils.getCurrentUserId()
         sharingService.shareSessionWithUser(currentUserId, request.sessionId, request.targetId, request.role)
-        val response = ShareResponse(
-            sessionId = request.sessionId,
-            targetId = request.targetId,
-            role = request.role,
-            message = "Session shared successfully with user"
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            ShareResponse(request.sessionId, request.targetId, request.role, "Shared with user")
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     @DeleteMapping("/user")
@@ -37,20 +40,13 @@ class SessionSharingController(private val sharingService: SessionSharingService
         sharingService.revokeSessionFromUser(currentUserId, request.sessionId, request.targetId)
     }
 
-    // -----------------------------
-    // SHARE WITH GROUP
-    // -----------------------------
     @PostMapping("/group")
     fun shareWithGroup(@RequestBody @Valid request: ShareSessionRequest): ResponseEntity<ShareResponse> {
         val currentUserId = SecurityUtils.getCurrentUserId()
         sharingService.shareSessionWithGroup(currentUserId, request.sessionId, request.targetId, request.role)
-        val response = ShareResponse(
-            sessionId = request.sessionId,
-            targetId = request.targetId,
-            role = request.role,
-            message = "Session shared successfully with group"
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            ShareResponse(request.sessionId, request.targetId, request.role, "Shared with group")
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     @DeleteMapping("/group")

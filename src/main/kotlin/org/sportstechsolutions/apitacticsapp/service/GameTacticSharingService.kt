@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.service
 
+import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
@@ -15,6 +16,55 @@ class GameTacticSharingService(
     private val userGameTacticAccessRepository: UserGameTacticAccessRepository,
     private val groupGameTacticAccessRepository: GroupGameTacticAccessRepository
 ) {
+    @Transactional(readOnly = true)
+    fun getGameTacticCollaborators(ownerId: Int, tacticId: Int): List<CollaboratorDTO> {
+        val tactic = gameTacticRepository.findById(tacticId)
+            .orElseThrow { ResourceNotFoundException("Game tactic not found") }
+
+        val owner = tactic.owner
+            ?: throw IllegalStateException("Game tactic has no owner")
+
+        // Security check: only owner can view collaborators
+        if (owner.id != ownerId) {
+            throw UnauthorizedException("Access denied")
+        }
+
+        val collaborators = mutableListOf<CollaboratorDTO>()
+
+        // --- USER COLLABORATORS ---
+        val userAccess = userGameTacticAccessRepository.findByGameTacticId(tacticId)
+            .mapNotNull { access ->
+                val user = access.user ?: return@mapNotNull null
+
+                // Skip owner if somehow present
+                if (user.id == owner.id) return@mapNotNull null
+
+                CollaboratorDTO(
+                    id = user.id,
+                    name = user.email,
+                    type = CollaboratorType.USER,
+                    role = access.role
+                )
+            }
+
+        // --- GROUP COLLABORATORS ---
+        val groupAccess = groupGameTacticAccessRepository.findByGameTacticId(tacticId)
+            .mapNotNull { access ->
+                val group = access.group ?: return@mapNotNull null
+
+                CollaboratorDTO(
+                    id = group.id,
+                    name = group.name,
+                    type = CollaboratorType.GROUP,
+                    role = access.role
+                )
+            }
+
+        collaborators.addAll(userAccess)
+        collaborators.addAll(groupAccess)
+
+        return collaborators
+    }
 
     // -----------------------------
     // User sharing

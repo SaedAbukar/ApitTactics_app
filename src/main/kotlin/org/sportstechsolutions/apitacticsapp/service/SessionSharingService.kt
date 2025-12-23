@@ -1,8 +1,10 @@
 package org.sportstechsolutions.apitacticsapp.service
 
+import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.AccessRole
+import org.sportstechsolutions.apitacticsapp.model.CollaboratorType
 import org.sportstechsolutions.apitacticsapp.model.GroupSessionAccess
 import org.sportstechsolutions.apitacticsapp.model.UserSessionAccess
 import org.sportstechsolutions.apitacticsapp.repository.*
@@ -18,9 +20,58 @@ class SessionSharingService(
     private val groupSessionAccessRepository: GroupSessionAccessRepository
 ) {
 
-    // -----------------------------
-    // User sharing
-    // -----------------------------
+    // --- NEW: RETRIEVAL LOGIC ---
+    @Transactional(readOnly = true)
+    fun getSessionCollaborators(ownerId: Int, sessionId: Int): List<CollaboratorDTO> {
+        val session = sessionRepository.findById(sessionId)
+            .orElseThrow { ResourceNotFoundException("Session not found") }
+
+        val owner = session.owner
+            ?: throw IllegalStateException("Session has no owner")
+
+        if (owner.id != ownerId) {
+            throw UnauthorizedException("Access denied")
+        }
+
+        val collaborators = mutableListOf<CollaboratorDTO>()
+
+        // --- USER COLLABORATORS ---
+        val userAccess = userSessionAccessRepository.findBySessionId(sessionId)
+            .mapNotNull { access ->
+                val user = access.user ?: return@mapNotNull null
+
+                // skip owner if somehow present
+                if (user.id == owner.id) return@mapNotNull null
+
+                CollaboratorDTO(
+                    id = user.id,
+                    name = user.email,
+                    type = CollaboratorType.USER,
+                    role = access.role
+                )
+            }
+
+        // --- GROUP COLLABORATORS ---
+        val groupAccess = groupSessionAccessRepository.findBySessionId(sessionId)
+            .mapNotNull { access ->
+                val group = access.group ?: return@mapNotNull null
+
+                CollaboratorDTO(
+                    id = group.id,
+                    name = group.name,
+                    type = CollaboratorType.GROUP,
+                    role = access.role
+                )
+            }
+
+        collaborators.addAll(userAccess)
+        collaborators.addAll(groupAccess)
+
+        return collaborators
+    }
+
+
+    // --- USER SHARING ---
     @Transactional
     fun shareSessionWithUser(ownerId: Int, sessionId: Int, targetUserId: Int, role: AccessRole) {
         val session = sessionRepository.findById(sessionId)
@@ -33,6 +84,7 @@ class SessionSharingService(
         val user = userRepository.findById(targetUserId)
             .orElseThrow { ResourceNotFoundException("User not found") }
 
+        // Manual uniqueness check
         val existingAccess = userSessionAccessRepository.findByUserIdAndSessionId(targetUserId, sessionId)
         if (existingAccess != null) {
             existingAccess.role = role
@@ -53,13 +105,12 @@ class SessionSharingService(
         }
 
         val access = userSessionAccessRepository.findByUserIdAndSessionId(targetUserId, sessionId)
-            ?: throw ResourceNotFoundException("No shared access found for this user and session")
+            ?: throw ResourceNotFoundException("No shared access found")
+
         userSessionAccessRepository.delete(access)
     }
 
-    // -----------------------------
-    // Group sharing
-    // -----------------------------
+    // --- GROUP SHARING ---
     @Transactional
     fun shareSessionWithGroup(ownerId: Int, sessionId: Int, groupId: Int, role: AccessRole) {
         val session = sessionRepository.findById(sessionId)
@@ -72,6 +123,7 @@ class SessionSharingService(
         val group = groupRepository.findById(groupId)
             .orElseThrow { ResourceNotFoundException("Group not found") }
 
+        // Manual uniqueness check
         val existingAccess = groupSessionAccessRepository.findBySessionIdAndGroupId(sessionId, groupId)
         if (existingAccess != null) {
             existingAccess.role = role
@@ -92,7 +144,8 @@ class SessionSharingService(
         }
 
         val access = groupSessionAccessRepository.findBySessionIdAndGroupId(sessionId, groupId)
-            ?: throw ResourceNotFoundException("No shared access found for this group and session")
+            ?: throw ResourceNotFoundException("No shared access found")
+
         groupSessionAccessRepository.delete(access)
     }
 }

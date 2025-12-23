@@ -1,6 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
+import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.dtos.RevokePracticeRequest
 import org.sportstechsolutions.apitacticsapp.dtos.SharePracticeRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareResponse
@@ -13,6 +14,13 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/practices/share")
 class PracticeSharingController(private val sharingService: PracticeSharingService) {
+
+    @GetMapping("/{practiceId}/collaborators")
+    fun getCollaborators(@PathVariable practiceId: Int): ResponseEntity<List<CollaboratorDTO>> {
+        val currentUserId = SecurityUtils.getCurrentUserId()
+        val collaborators = sharingService.getPracticeCollaborators(currentUserId, practiceId)
+        return ResponseEntity.ok(collaborators)
+    }
 
     // -----------------------------
     // SHARE WITH USER

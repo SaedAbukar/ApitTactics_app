@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface UserPracticeAccessRepository : JpaRepository<UserPracticeAccess, Int> {
     fun findByUserId(userId: Int): List<UserPracticeAccess>
     fun findByUserIdAndPracticeId(userId: Int, practiceId: Int): UserPracticeAccess?
-
+    fun findByPracticeId(practiceId: Int): List<UserPracticeAccess>
     fun deleteAllByPractice(practice: Practice)
 
 }

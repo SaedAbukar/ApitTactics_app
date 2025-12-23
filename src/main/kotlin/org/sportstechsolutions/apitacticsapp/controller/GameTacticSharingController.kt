@@ -1,6 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
+import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.dtos.RevokeGameTacticRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareGameTacticRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareResponse
@@ -13,6 +14,12 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/game-tactics/share")
 class GameTacticSharingController(private val sharingService: GameTacticSharingService) {
+    @GetMapping("/{tacticId}/collaborators")
+    fun getCollaborators(@PathVariable tacticId: Int): ResponseEntity<List<CollaboratorDTO>> {
+        val currentUserId = SecurityUtils.getCurrentUserId()
+        val collaborators = sharingService.getGameTacticCollaborators(currentUserId, tacticId)
+        return ResponseEntity.ok(collaborators)
+    }
 
     // -----------------------------
     // SHARE WITH USER
