@@ -73,13 +73,16 @@ data class GameTacticRequest(
     val sessions: List<@Valid SessionRequest> = emptyList()
 )
 
+// -----------------------------------------------------------
+// HYBRID REQUEST: Supports Creation (Data required) & Linking (ID only)
+// -----------------------------------------------------------
 data class SessionRequest(
     val id: Int? = null,
-    @field:NotBlank(message = "Name is required")
-    val name: String,
 
-    @field:NotBlank(message = "Description is required")
-    val description: String,
+    // Nullable to allow linking existing sessions by ID only.
+    // Validation is now handled in EntityMappers.toSession()
+    val name: String? = null,
+    val description: String? = null,
 
     @field:Valid
     val steps: List<@Valid StepRequest> = emptyList()

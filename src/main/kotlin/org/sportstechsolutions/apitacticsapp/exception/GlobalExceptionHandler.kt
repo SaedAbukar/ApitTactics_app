@@ -27,7 +27,7 @@ class GlobalExceptionHandler {
 
     private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
-    // Validation errors from @Valid
+    // 1. Validation errors from @Valid (DTO constraints)
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationExceptions(ex: MethodArgumentNotValidException): ResponseEntity<ApiError> {
         val errors = ex.bindingResult.allErrors.mapNotNull { error ->
@@ -50,7 +50,18 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(apiError)
     }
 
-    // Resource not found
+    // 2. NEW: Business Logic Validation (Thrown manually from Mapper/Service)
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ApiError> {
+        val apiError = ApiError(
+            status = HttpStatus.BAD_REQUEST.value(),
+            error = "Bad Request",
+            message = ex.message ?: "Invalid request parameters"
+        )
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(apiError)
+    }
+
+    // 3. Resource not found
     @ExceptionHandler(ResourceNotFoundException::class)
     fun handleNotFound(ex: ResourceNotFoundException): ResponseEntity<ApiError> {
         val apiError = ApiError(
@@ -61,7 +72,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(apiError)
     }
 
-    // Unauthorized access
+    // 4. Unauthorized access
     @ExceptionHandler(UnauthorizedException::class)
     fun handleUnauthorized(ex: UnauthorizedException): ResponseEntity<ApiError> {
         val apiError = ApiError(
@@ -72,7 +83,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiError)
     }
 
-    // Fallback for all uncaught exceptions (sanitized)
+    // 5. Fallback for all uncaught exceptions (sanitized)
     @ExceptionHandler(Exception::class)
     fun handleAll(ex: Exception): ResponseEntity<ApiError> {
         // Log the full exception for debugging

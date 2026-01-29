@@ -18,22 +18,32 @@ class GameTacticService(
 ) {
 
     // ------------------------------------------
-    // Tabbed view (personal, user shared, group shared)
+    // Tabbed view (Returns LIGHTWEIGHT Summaries)
     // ------------------------------------------
     @Transactional(readOnly = true)
-    fun getGameTacticsForTabs(userId: Int): TabbedResponse<GameTacticResponse> {
-        val personal = gameTacticRepository.findByOwnerId(userId)
-            .map { entityMappers.loadFullGameTactic(it) }
+    fun getGameTacticsForTabs(userId: Int): TabbedResponse<GameTacticSummaryResponse> {
 
+        // 1. Personal Items (Role is OWNER)
+        val personal = gameTacticRepository.findByOwnerId(userId)
+            .map { entityMappers.toGameTacticSummary(it, AccessRole.OWNER) }
+
+        // 2. User Shared Items
         val userShared = userGameTacticAccessRepository.findByUserId(userId)
             .filter { it.role != AccessRole.NONE }
-            .mapNotNull { it.gameTactic }
-            .map { entityMappers.loadFullGameTactic(it) }
+            .mapNotNull { access ->
+                access.gameTactic?.let { tactic ->
+                    entityMappers.toGameTacticSummary(tactic, access.role)
+                }
+            }
 
+        // 3. Group Shared Items
         val groupShared = groupGameTacticAccessRepository.findByGroupMemberId(userId)
-            .mapNotNull { it.gameTactic }
-            .distinct()
-            .map { entityMappers.loadFullGameTactic(it) }
+            .mapNotNull { access ->
+                access.gameTactic?.let { tactic ->
+                    entityMappers.toGameTacticSummary(tactic, access.role)
+                }
+            }
+            .distinctBy { it.id }
 
         return TabbedResponse(
             personalItems = personal,
@@ -58,15 +68,12 @@ class GameTacticService(
             owner = User(id = userId)
         )
 
+        // Attach sessions
         val sessionsToAttach = request.sessions.map { dto ->
             dto.id?.let { sessionId ->
-                // EXISTING SESSION → attach only
                 sessionRepository.findById(sessionId)
-                    .orElseThrow {
-                        ResourceNotFoundException("Session $sessionId not found")
-                    }
+                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
             } ?: run {
-                // NEW SESSION → create once
                 entityMappers.toSession(dto, gameTactic)
             }
         }
@@ -77,9 +84,8 @@ class GameTacticService(
         gameTactic.sessions.addAll(sessionsToAttach)
 
         val saved = gameTacticRepository.save(gameTactic)
-        return entityMappers.loadFullGameTactic(saved)
+        return entityMappers.loadFullGameTactic(saved, AccessRole.OWNER)
     }
-
 
     @Transactional
     fun updateGameTactic(
@@ -92,37 +98,29 @@ class GameTacticService(
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        val role = if (gameTactic.owner?.id == userId) {
-            AccessRole.OWNER
-        } else {
-            getUserRoleForGameTactic(userId, gameTacticId, groupId)
-        }
+        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
+        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
 
         if (!role.canEdit()) {
             throw UnauthorizedException("You do not have permission to edit this game tactic")
         }
 
-        // ─── Update basic fields ─────────────────────────────
         gameTactic.name = request.name
         gameTactic.description = request.description
         gameTactic.is_premade = request.isPremade
 
-        // ─── Detach old associations only ───────────────────
+        // Detach old
         gameTactic.sessions.forEach { session ->
             session.gameTactics.remove(gameTactic)
         }
         gameTactic.sessions.clear()
 
-        // ─── Attach existing OR create new sessions ─────────
+        // Attach new
         val sessionsToAttach = request.sessions.map { dto ->
             dto.id?.let { sessionId ->
-                // EXISTING SESSION → attach only
                 sessionRepository.findById(sessionId)
-                    .orElseThrow {
-                        ResourceNotFoundException("Session $sessionId not found")
-                    }
+                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
             } ?: run {
-                // NEW SESSION → create once
                 entityMappers.toSession(dto, gameTactic)
             }
         }
@@ -133,9 +131,8 @@ class GameTacticService(
         gameTactic.sessions.addAll(sessionsToAttach)
 
         val updated = gameTacticRepository.save(gameTactic)
-        return entityMappers.loadFullGameTactic(updated)
+        return entityMappers.loadFullGameTactic(updated, role)
     }
-
 
     @Transactional
     fun deleteGameTactic(userId: Int, gameTacticId: Int, groupId: Int? = null) {
@@ -160,7 +157,8 @@ class GameTacticService(
         else getUserRoleForGameTactic(userId, gameTacticId, groupId)
 
         if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this game tactic")
-        return entityMappers.loadFullGameTactic(gameTactic)
+
+        return entityMappers.loadFullGameTactic(gameTactic, role)
     }
 
     // ------------------------------------------

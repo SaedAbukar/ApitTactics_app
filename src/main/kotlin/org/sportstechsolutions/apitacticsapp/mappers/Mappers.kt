@@ -4,6 +4,10 @@ import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.TeamRepository
 
+// -------------------------------------------------------------------
+// EXTENSION FUNCTIONS (For Request Mapping)
+// -------------------------------------------------------------------
+
 fun List<FormationPositionRequest>.toFormationPositions(
     user: User,
     teamRepository: TeamRepository
@@ -28,7 +32,9 @@ fun List<FormationPositionRequest>.toFormationPositions(
     }.toMutableList()
 }
 
-
+// -------------------------------------------------------------------
+// RESPONSE MAPPERS (Static Objects)
+// -------------------------------------------------------------------
 
 object PracticeMapper {
     fun toPracticeResponse(practice: Practice): PracticeResponse {
@@ -37,20 +43,28 @@ object PracticeMapper {
             name = practice.name,
             description = practice.description,
             isPremade = practice.is_premade,
+            ownerId = practice.owner?.id ?: 0,
+            role = AccessRole.NONE, // Default, overwritten by EntityMappers
             sessions = practice.sessions.map { toSessionResponse(it) }
         )
     }
 
+    // Helper for nested sessions within a Practice
     internal fun toSessionResponse(session: Session): SessionResponse {
         return SessionResponse(
             id = session.id,
             name = session.name,
             description = session.description,
+            ownerId = session.owner?.id ?: 0,
+            // Inside a Practice, we default the session-specific role (usually Viewer or None)
+            // The UI context for a Practice is usually different from a standalone Session
+            role = AccessRole.NONE,
             steps = session.steps.map { toStepResponse(it) }
         )
     }
 
-    internal fun toStepResponse(step: Step): StepResponse {
+    // Shared Step Mapper (Used by Practice, GameTactic, and Session Mappers)
+    fun toStepResponse(step: Step): StepResponse {
         return StepResponse(
             id = step.id,
             players = step.players.map { p -> PlayerResponse(p.id, p.x, p.y, p.number, p.color, p.team?.id) },
@@ -70,26 +84,33 @@ object PracticeMapper {
 }
 
 object GameTacticMapper {
-
     fun toGameTacticResponse(gameTactic: GameTactic): GameTacticResponse {
         return GameTacticResponse(
             id = gameTactic.id,
             name = gameTactic.name,
             description = gameTactic.description,
             isPremade = gameTactic.is_premade,
+            ownerId = gameTactic.owner?.id ?: 0,
+            role = AccessRole.NONE, // Default, overwritten by EntityMappers
+            // Reuse the PracticeMapper session logic for consistency
             sessions = gameTactic.sessions.map { PracticeMapper.toSessionResponse(it) }
         )
     }
 }
 
 object SessionMapper {
+    // This is the base mapper used by EntityMappers.loadFullSession
     fun toSessionResponse(session: Session): SessionResponse {
         return SessionResponse(
             id = session.id,
             name = session.name,
             description = session.description,
+            ownerId = session.owner?.id ?: 0,
+            // Default role is NONE here.
+            // It is vital that EntityMappers.loadFullSession overwrites this
+            // using .copy(role = calculatedRole)
+            role = AccessRole.NONE,
             steps = session.steps.map { PracticeMapper.toStepResponse(it) }
         )
     }
 }
-

@@ -13,10 +13,10 @@ import org.springframework.web.bind.annotation.*
 class SessionController(private val sessionService: SessionService) {
 
     // -----------------------------
-    // GET TABBED SESSIONS
+    // GET TABBED SESSIONS (FIXED RETURN TYPE)
     // -----------------------------
     @GetMapping
-    fun getTabbedSessions(): ResponseEntity<TabbedResponse<SessionResponse>> {
+    fun getTabbedSessions(): ResponseEntity<TabbedResponse<SessionSummaryResponse>> { // <--- Changed here
         val userId = SecurityUtils.getCurrentUserId()
         return ResponseEntity.ok(sessionService.getSessionsForTabs(userId))
     }

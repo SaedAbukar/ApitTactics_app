@@ -13,16 +13,16 @@ import org.springframework.web.bind.annotation.*
 class GameTacticController(private val gameTacticService: GameTacticService) {
 
     // -----------------------------
-    // GET TABBED GAME TACTICS
+    // GET TABBED GAME TACTICS (Returns Summaries)
     // -----------------------------
     @GetMapping
-    fun getTabbedGameTactics(): ResponseEntity<TabbedResponse<GameTacticResponse>> {
+    fun getTabbedGameTactics(): ResponseEntity<TabbedResponse<GameTacticSummaryResponse>> {
         val userId = SecurityUtils.getCurrentUserId()
         return ResponseEntity.ok(gameTacticService.getGameTacticsForTabs(userId))
     }
 
     // -----------------------------
-    // GET SINGLE GAME TACTIC
+    // GET SINGLE GAME TACTIC (Returns Full Details)
     // -----------------------------
     @GetMapping("/{id}")
     fun getGameTacticById(

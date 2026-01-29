@@ -13,16 +13,16 @@ import org.springframework.web.bind.annotation.*
 class PracticeController(private val practiceService: PracticeService) {
 
     // -----------------------------
-    // GET TABBED PRACTICES
+    // GET TABBED PRACTICES (Returns Summaries)
     // -----------------------------
     @GetMapping
-    fun getTabbedPractices(): ResponseEntity<TabbedResponse<PracticeResponse>> {
+    fun getTabbedPractices(): ResponseEntity<TabbedResponse<PracticeSummaryResponse>> {
         val userId = SecurityUtils.getCurrentUserId()
         return ResponseEntity.ok(practiceService.getPracticesForTabs(userId))
     }
 
     // -----------------------------
-    // GET SINGLE PRACTICE
+    // GET SINGLE PRACTICE (Returns Full Details)
     // -----------------------------
     @GetMapping("/{id}")
     fun getPracticeById(

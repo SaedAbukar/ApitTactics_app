@@ -18,27 +18,69 @@ data class UserProfileResponse(
     val message: String? = null
 )
 
+// --- 1. LIGHTWEIGHT SUMMARY (For Tabs) ---
+data class PracticeSummaryResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    val ownerId: Int,
+    val sessions: List<SessionSummaryResponse>, // <--- Changed from sessionCount
+    val role: AccessRole
+)
+
+// --- 2. FULL DETAIL RESPONSE (For Tactic Board) ---
 data class PracticeResponse(
     val id: Int,
     val name: String,
     val description: String,
     val isPremade: Boolean,
+    val ownerId: Int,
+    val role: AccessRole,
     val sessions: List<SessionResponse>
 )
 
+// --- 1. LIGHTWEIGHT SUMMARY (For Tabs) ---
+data class GameTacticSummaryResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    val ownerId: Int,
+    val sessions: List<SessionSummaryResponse>, // <--- Changed from sessionCount
+    val role: AccessRole
+)
+
+// --- 2. FULL DETAIL RESPONSE (For Tactic Board) ---
 data class GameTacticResponse(
     val id: Int,
     val name: String,
     val description: String,
     val isPremade: Boolean,
+    val ownerId: Int,
+    val role: AccessRole,
     val sessions: List<SessionResponse>
 )
 
+// 1. The Lightweight Summary (For Tabs)
+data class SessionSummaryResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val ownerId: Int,
+    val stepCount: Int,
+    val role: AccessRole // <--- Added
+)
+
+// 2. The Full Detail Response (For the Tactic Board)
+// Ensure your existing SessionResponse looks like this or has these fields added
 data class SessionResponse(
     val id: Int,
     val name: String,
     val description: String,
-    val steps: List<StepResponse>
+    val ownerId: Int,
+    val steps: List<StepResponse>, // The heavy list
+    val role: AccessRole // <--- Added
 )
 
 data class TabbedResponse<T>(

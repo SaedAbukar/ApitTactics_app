@@ -18,22 +18,32 @@ class PracticeService(
 ) {
 
     // ------------------------------------------
-    // Tabbed view (personal, user shared, group shared)
+    // Tabbed view (Returns LIGHTWEIGHT Summaries)
     // ------------------------------------------
     @Transactional(readOnly = true)
-    fun getPracticesForTabs(userId: Int): TabbedResponse<PracticeResponse> {
-        val personal = practiceRepository.findByOwnerId(userId)
-            .map { entityMappers.loadFullPractice(it) }
+    fun getPracticesForTabs(userId: Int): TabbedResponse<PracticeSummaryResponse> {
 
+        // 1. Personal Items (Role is OWNER)
+        val personal = practiceRepository.findByOwnerId(userId)
+            .map { entityMappers.toPracticeSummary(it, AccessRole.OWNER) }
+
+        // 2. User Shared Items
         val userShared = userPracticeAccessRepository.findByUserId(userId)
             .filter { it.role != AccessRole.NONE }
-            .mapNotNull { it.practice }
-            .map { entityMappers.loadFullPractice(it) }
+            .mapNotNull { access ->
+                access.practice?.let { practice ->
+                    entityMappers.toPracticeSummary(practice, access.role)
+                }
+            }
 
+        // 3. Group Shared Items
         val groupShared = groupPracticeAccessRepository.findByGroupMemberId(userId)
-            .mapNotNull { it.practice }
-            .distinct()
-            .map { entityMappers.loadFullPractice(it) }
+            .mapNotNull { access ->
+                access.practice?.let { practice ->
+                    entityMappers.toPracticeSummary(practice, access.role)
+                }
+            }
+            .distinctBy { it.id }
 
         return TabbedResponse(
             personalItems = personal,
@@ -58,15 +68,12 @@ class PracticeService(
             owner = User(id = userId)
         )
 
+        // Attach sessions logic...
         val sessionsToAttach = request.sessions.map { dto ->
             dto.id?.let { sessionId ->
-                // EXISTING SESSION → attach only
                 sessionRepository.findById(sessionId)
-                    .orElseThrow {
-                        ResourceNotFoundException("Session $sessionId not found")
-                    }
+                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
             } ?: run {
-                // NEW SESSION → create once
                 entityMappers.toSession(dto, practice)
             }
         }
@@ -77,9 +84,8 @@ class PracticeService(
         practice.sessions.addAll(sessionsToAttach)
 
         val saved = practiceRepository.save(practice)
-        return entityMappers.loadFullPractice(saved)
+        return entityMappers.loadFullPractice(saved, AccessRole.OWNER)
     }
-
 
     @Transactional
     fun updatePractice(
@@ -92,37 +98,29 @@ class PracticeService(
         val practice = practiceRepository.findById(practiceId)
             .orElseThrow { ResourceNotFoundException("Practice not found") }
 
-        val role = if (practice.owner?.id == userId) {
-            AccessRole.OWNER
-        } else {
-            getUserRoleForPractice(userId, practiceId, groupId)
-        }
+        val role = if (practice.owner?.id == userId) AccessRole.OWNER
+        else getUserRoleForPractice(userId, practiceId, groupId)
 
         if (!role.canEdit()) {
             throw UnauthorizedException("You do not have permission to edit this practice")
         }
 
-        // ─── Update basic fields ─────────────────────────────
         practice.name = request.name
         practice.description = request.description
         practice.is_premade = request.isPremade
 
-        // ─── Detach old associations only ───────────────────
+        // Detach old
         practice.sessions.forEach { session ->
             session.practices.remove(practice)
         }
         practice.sessions.clear()
 
-        // ─── Attach existing OR create new sessions ─────────
+        // Attach new
         val sessionsToAttach = request.sessions.map { dto ->
             dto.id?.let { sessionId ->
-                // EXISTING SESSION → attach only
                 sessionRepository.findById(sessionId)
-                    .orElseThrow {
-                        ResourceNotFoundException("Session $sessionId not found")
-                    }
+                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
             } ?: run {
-                // NEW SESSION → create once
                 entityMappers.toSession(dto, practice)
             }
         }
@@ -133,9 +131,8 @@ class PracticeService(
         practice.sessions.addAll(sessionsToAttach)
 
         val updated = practiceRepository.save(practice)
-        return entityMappers.loadFullPractice(updated)
+        return entityMappers.loadFullPractice(updated, role)
     }
-
 
     @Transactional
     fun deletePractice(userId: Int, practiceId: Int, groupId: Int? = null) {
@@ -160,7 +157,8 @@ class PracticeService(
         else getUserRoleForPractice(userId, practiceId, groupId)
 
         if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
-        return entityMappers.loadFullPractice(practice)
+
+        return entityMappers.loadFullPractice(practice, role)
     }
 
     // ------------------------------------------

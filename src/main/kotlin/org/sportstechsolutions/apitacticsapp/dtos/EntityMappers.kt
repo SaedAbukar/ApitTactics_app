@@ -1,4 +1,5 @@
 package org.sportstechsolutions.apitacticsapp.dtos
+
 import org.sportstechsolutions.apitacticsapp.mappers.*
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.TeamRepository
@@ -7,8 +8,18 @@ import org.springframework.stereotype.Component
 @Component
 class EntityMappers(private val teamRepository: TeamRepository) {
 
-    // ---------------- SESSION / PRACTICE ----------------
+    // ------------------------------------------------------------
+    // SESSION CREATION (With Manual Validation)
+    // ------------------------------------------------------------
     fun toSession(req: SessionRequest, owner: User): Session {
+        // Validation: Since DTO allows nulls (for linking), we must check here for creation.
+        if (req.name.isNullOrBlank()) {
+            throw IllegalArgumentException("Session name is required when creating a new session")
+        }
+        if (req.description.isNullOrBlank()) {
+            throw IllegalArgumentException("Session description is required when creating a new session")
+        }
+
         val session = Session(
             name = req.name,
             description = req.description,
@@ -28,7 +39,9 @@ class EntityMappers(private val teamRepository: TeamRepository) {
         return toSession(req, owner)
     }
 
-    // ---------------- STEP ----------------
+    // ------------------------------------------------------------
+    // STEP CREATION
+    // ------------------------------------------------------------
     fun toStep(req: StepRequest, session: Session, user: User): Step {
         val step = Step(session = session)
 
@@ -61,45 +74,81 @@ class EntityMappers(private val teamRepository: TeamRepository) {
         return step
     }
 
-    // ---------------- FULL FETCH ----------------
-    fun loadFullSession(session: Session): SessionResponse {
-        session.steps.forEach { step ->
-            step.players.size
-            step.balls.size
-            step.goals.size
-            step.teams.size
-            step.formations.forEach { it.positions.size }
-            step.cones.size
-        }
-        return SessionMapper.toSessionResponse(session)
+    // ------------------------------------------------------------
+    // RESPONSE MAPPING (Summaries & Full)
+    // ------------------------------------------------------------
+
+    // SESSION
+    fun toSessionSummary(session: Session, role: AccessRole): SessionSummaryResponse {
+        return SessionSummaryResponse(
+            id = session.id,
+            name = session.name,
+            description = session.description,
+            ownerId = session.owner?.id ?: 0,
+            stepCount = session.steps.size,
+            role = role
+        )
     }
 
-    fun loadFullPractice(practice: Practice): PracticeResponse {
+    fun loadFullSession(session: Session, role: AccessRole = AccessRole.OWNER): SessionResponse {
+        // Trigger lazy loading for batch fetching
+        session.steps.forEach { step ->
+            step.players.size; step.balls.size; step.goals.size; step.teams.size; step.cones.size
+            step.formations.forEach { it.positions.size }
+        }
+        val baseResponse = SessionMapper.toSessionResponse(session)
+        return baseResponse.copy(role = role)
+    }
+
+    // PRACTICE
+    fun toPracticeSummary(practice: Practice, role: AccessRole): PracticeSummaryResponse {
+        return PracticeSummaryResponse(
+            id = practice.id,
+            name = practice.name,
+            description = practice.description,
+            isPremade = practice.is_premade,
+            ownerId = practice.owner?.id ?: 0,
+            sessions = practice.sessions.map { session ->
+                toSessionSummary(session, AccessRole.NONE)
+            },
+            role = role
+        )
+    }
+
+    fun loadFullPractice(practice: Practice, role: AccessRole = AccessRole.OWNER): PracticeResponse {
         practice.sessions.forEach { session ->
             session.steps.forEach { step ->
-                step.players.size
-                step.balls.size
-                step.goals.size
-                step.teams.size
+                step.players.size; step.balls.size; step.goals.size; step.teams.size; step.cones.size
                 step.formations.forEach { it.positions.size }
-                step.cones.size
             }
         }
-        return PracticeMapper.toPracticeResponse(practice)
+        val baseResponse = PracticeMapper.toPracticeResponse(practice)
+        return baseResponse.copy(role = role, ownerId = practice.owner?.id ?: 0)
     }
 
-    fun loadFullGameTactic(gameTactic: GameTactic): GameTacticResponse {
+    // GAME TACTIC
+    fun toGameTacticSummary(gameTactic: GameTactic, role: AccessRole): GameTacticSummaryResponse {
+        return GameTacticSummaryResponse(
+            id = gameTactic.id,
+            name = gameTactic.name,
+            description = gameTactic.description,
+            isPremade = gameTactic.is_premade,
+            ownerId = gameTactic.owner?.id ?: 0,
+            sessions = gameTactic.sessions.map { session ->
+                toSessionSummary(session, AccessRole.NONE)
+            },
+            role = role
+        )
+    }
+
+    fun loadFullGameTactic(gameTactic: GameTactic, role: AccessRole = AccessRole.OWNER): GameTacticResponse {
         gameTactic.sessions.forEach { session ->
             session.steps.forEach { step ->
-                step.players.size
-                step.balls.size
-                step.goals.size
-                step.teams.size
+                step.players.size; step.balls.size; step.goals.size; step.teams.size; step.cones.size
                 step.formations.forEach { it.positions.size }
-                step.cones.size
             }
         }
-        return GameTacticMapper.toGameTacticResponse(gameTactic)
+        val baseResponse = GameTacticMapper.toGameTacticResponse(gameTactic)
+        return baseResponse.copy(role = role, ownerId = gameTactic.owner?.id ?: 0)
     }
 }
-
