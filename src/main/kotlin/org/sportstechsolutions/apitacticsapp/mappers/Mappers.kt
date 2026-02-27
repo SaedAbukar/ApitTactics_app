@@ -69,7 +69,7 @@ object PracticeMapper {
             id = step.id,
             players = step.players.map { p -> PlayerResponse(p.id, p.x, p.y, p.number, p.color, p.team?.id) },
             balls = step.balls.map { b -> BallResponse(b.id, b.x, b.y, b.color) },
-            goals = step.goals.map { g -> GoalResponse(g.id, g.x, g.y, g.width, g.depth, g.color) },
+            goals = step.goals.map { g -> GoalResponse(g.id, g.x, g.y, g.width, g.depth, g.color, g.rotation) },
             teams = step.teams.map { t -> TeamResponse(t.id, t.name, t.color) },
             formations = step.formations.map { f ->
                 FormationResponse(

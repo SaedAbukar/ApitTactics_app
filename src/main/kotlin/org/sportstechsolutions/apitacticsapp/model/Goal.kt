@@ -15,5 +15,6 @@ data class Goal(
     var y: Int = 0,
     var width: Int = 0,
     var depth: Int = 0,
-    var color: String? = null
+    var color: String? = null,
+    var rotation: Int = 0,
 )

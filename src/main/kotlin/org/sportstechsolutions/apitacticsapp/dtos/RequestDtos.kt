@@ -144,10 +144,14 @@ data class GoalRequest(
     @field:Min(value = 1, message = "Width must be at least 1")
     val width: Int,
 
-    @field:Min(value = 1, message = "Depth must be at least 1")
+    @field:Min(value = 0, message = "Depth must be at least 1")
     val depth: Int,
 
-    val color: String? = null
+    val color: String? = null,
+
+    @field:Min(value = 0, message = "Rotation cannot be less than 0")
+    @field:Max(value = 359, message = "Rotation must be less than 360")
+    val rotation: Int = 0
 )
 
 data class TeamRequest(

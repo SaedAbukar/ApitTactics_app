@@ -56,7 +56,20 @@ class EntityMappers(private val teamRepository: TeamRepository) {
 
         // Map balls, goals, cones
         step.balls.addAll(req.balls.map { Ball(step = step, x = it.x, y = it.y, color = it.color) })
-        step.goals.addAll(req.goals.map { Goal(step = step, x = it.x, y = it.y, width = it.width, depth = it.depth, color = it.color) })
+
+        // ✅ Updated Goal mapping to include rotation
+        step.goals.addAll(req.goals.map {
+            Goal(
+                step = step,
+                x = it.x,
+                y = it.y,
+                width = it.width,
+                depth = it.depth,
+                color = it.color,
+                rotation = it.rotation
+            )
+        })
+
         step.cones.addAll(req.cones.map { Cone(step = step, x = it.x, y = it.y, color = it.color) })
 
         // Map teams
