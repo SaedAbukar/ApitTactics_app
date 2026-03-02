@@ -80,6 +80,10 @@ data class GameTacticSearchRequest(
     val sortBy: SortBy = SortBy.RECENT
 )
 
+data class SessionLinkRequest(
+    @field:NotNull(message = "Session ID is required")
+    val id: Int
+)
 
 data class PracticeRequest(
     @field:NotBlank(message = "Name is required")
@@ -94,7 +98,7 @@ data class PracticeRequest(
     val isPremade: Boolean = false,
 
     @field:Valid
-    val sessions: List<@Valid SessionRequest> = emptyList(),
+    val sessions: List<@Valid SessionLinkRequest> = emptyList(),
 
     val phaseOfPlay: PhaseOfPlay? = null,
     val ballContext: BallContext? = null,
@@ -121,6 +125,7 @@ data class SessionRequest(
     @field:Valid
     val steps: List<@Valid StepRequest> = emptyList(),
 
+
     val phaseOfPlay: PhaseOfPlay? = null,
     val ballContext: BallContext? = null,
     val drillFormat: DrillFormat? = null,
@@ -146,7 +151,7 @@ data class GameTacticRequest(
     val isPremade: Boolean = false,
 
     @field:Valid
-    val sessions: List<@Valid SessionRequest> = emptyList()
+    val sessions: List<@Valid SessionLinkRequest> = emptyList(),
 )
 
 data class StepRequest(

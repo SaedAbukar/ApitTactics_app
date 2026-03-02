@@ -68,7 +68,6 @@ class PracticeService(
     // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun searchPractices(userId: Int, request: PracticeSearchRequest, pageable: Pageable): PagedResponse<PracticeSummaryResponse> {
-        // GUEST SAFETY: Use emptySet() if userId is 0 to avoid DB errors, and use .toSet() for type safety
         val accessibleIds: Set<Int> = if (userId == 0) {
             emptySet()
         } else {
@@ -110,7 +109,7 @@ class PracticeService(
             name = request.name,
             description = request.description,
             isPremade = request.isPremade,
-            isPublic = request.isPublic, // Handled new visibility flag
+            isPublic = request.isPublic,
             owner = user,
             phaseOfPlay = request.phaseOfPlay,
             ballContext = request.ballContext,
@@ -124,16 +123,14 @@ class PracticeService(
             qualityMakers = request.qualityMakers.toMutableSet()
         )
 
+        // FIXED: Strictly link existing sessions by ID to prevent DTO instantiation errors
         val sessionsToAttach = request.sessions.map { dto ->
-            dto.id?.let { sessionId ->
-                sessionRepository.findById(sessionId)
-                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
-            } ?: run {
-                entityMappers.toSession(dto, practice)
-            }
+            val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
+            sessionRepository.findById(sessionId)
+                .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // BIDIRECTIONAL SYNC: Ensure Sessions know they belong to this Practice
+        // BIDIRECTIONAL SYNC
         sessionsToAttach.forEach { session ->
             session.practices.add(practice)
         }
@@ -153,11 +150,10 @@ class PracticeService(
 
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this practice")
 
-        // Update fields
         practice.name = request.name
         practice.description = request.description
         practice.isPremade = request.isPremade
-        practice.isPublic = request.isPublic // Update visibility
+        practice.isPublic = request.isPublic
         practice.phaseOfPlay = request.phaseOfPlay
         practice.ballContext = request.ballContext
         practice.drillFormat = request.drillFormat
@@ -173,22 +169,20 @@ class PracticeService(
         practice.qualityMakers.clear()
         practice.qualityMakers.addAll(request.qualityMakers)
 
-        // SYNC: Detach old sessions from both sides
+        // SYNC: Detach old sessions
         practice.sessions.forEach { session ->
             session.practices.remove(practice)
         }
         practice.sessions.clear()
 
+        // FIXED: Use IDs only for attachment
         val sessionsToAttach = request.sessions.map { dto ->
-            dto.id?.let { sessionId ->
-                sessionRepository.findById(sessionId)
-                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
-            } ?: run {
-                entityMappers.toSession(dto, practice)
-            }
+            val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
+            sessionRepository.findById(sessionId)
+                .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // SYNC: Re-attach new sessions to both sides
+        // SYNC: Re-attach new sessions
         sessionsToAttach.forEach { session ->
             session.practices.add(practice)
         }
@@ -206,9 +200,8 @@ class PracticeService(
         val role = if (practice.owner?.id == userId) AccessRole.OWNER
         else getUserRoleForPractice(userId, practiceId, groupId)
 
-        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this practice")
+        if (!role.canEdit()) throw UnauthorizedException("Permission denied")
 
-        // BIDIRECTIONAL CLEANUP: Remove the reference from sessions before deleting
         practice.sessions.forEach { session ->
             session.practices.remove(practice)
         }
@@ -225,7 +218,7 @@ class PracticeService(
         val role = if (practice.owner?.id == userId) AccessRole.OWNER
         else getUserRoleForPractice(userId, practiceId, groupId)
 
-        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
+        if (role == AccessRole.NONE) throw UnauthorizedException("Access denied")
 
         practice.viewCount += 1
         practiceRepository.save(practice)
@@ -233,16 +226,13 @@ class PracticeService(
         return entityMappers.loadFullPractice(practice, role, userId)
     }
 
-    // ------------------------------------------------------------
-    // Favorites & Accessibility
-    // ------------------------------------------------------------
     @Transactional
     fun toggleFavorite(userId: Int, practiceId: Int): Boolean {
         val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
         val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
 
         val role = if (practice.owner?.id == userId) AccessRole.OWNER else getUserRoleForPractice(userId, practiceId)
-        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
+        if (role == AccessRole.NONE) throw UnauthorizedException("Access denied")
 
         val isAlreadyFavorite = practice.favoritedByUsers.any { it.id == userId }
         if (isAlreadyFavorite) {

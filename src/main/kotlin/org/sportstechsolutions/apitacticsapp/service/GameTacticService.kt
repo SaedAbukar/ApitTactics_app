@@ -68,7 +68,6 @@ class GameTacticService(
     // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun searchGameTactics(userId: Int, request: GameTacticSearchRequest, pageable: Pageable): PagedResponse<GameTacticSummaryResponse> {
-        // FIXED: Handle Guest ID 0 and convert Collection to Set for the Spec builder
         val accessibleIds: Set<Int> = if (userId == 0) {
             emptySet()
         } else {
@@ -110,20 +109,18 @@ class GameTacticService(
             name = request.name,
             description = request.description,
             isPremade = request.isPremade,
-            isPublic = request.isPublic, // Handled new visibility flag
+            isPublic = request.isPublic,
             owner = user
         )
 
+        // FIXED: Strictly link existing sessions by ID to avoid JSON parse errors
         val sessionsToAttach = request.sessions.map { dto ->
-            dto.id?.let { sessionId ->
-                sessionRepository.findById(sessionId)
-                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
-            } ?: run {
-                entityMappers.toSession(dto, gameTactic)
-            }
+            val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
+            sessionRepository.findById(sessionId)
+                .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // SYNC BIDIRECTIONAL RELATIONSHIP
+        // BIDIRECTIONAL SYNC: Ensure Sessions know they belong to this Tactic
         sessionsToAttach.forEach { session ->
             session.gameTactics.add(gameTactic)
         }
@@ -146,7 +143,7 @@ class GameTacticService(
         gameTactic.name = request.name
         gameTactic.description = request.description
         gameTactic.isPremade = request.isPremade
-        gameTactic.isPublic = request.isPublic // Update visibility
+        gameTactic.isPublic = request.isPublic
 
         // DETACH OLD SESSIONS FROM BOTH SIDES
         gameTactic.sessions.forEach { session ->
@@ -154,16 +151,14 @@ class GameTacticService(
         }
         gameTactic.sessions.clear()
 
+        // FIXED: Use IDs only for attachment to prevent Constructor NPE
         val sessionsToAttach = request.sessions.map { dto ->
-            dto.id?.let { sessionId ->
-                sessionRepository.findById(sessionId)
-                    .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
-            } ?: run {
-                entityMappers.toSession(dto, gameTactic)
-            }
+            val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
+            sessionRepository.findById(sessionId)
+                .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // ATTACH NEW SESSIONS TO BOTH SIDES
+        // SYNC: Re-attach new sessions to both sides
         sessionsToAttach.forEach { session ->
             session.gameTactics.add(gameTactic)
         }
