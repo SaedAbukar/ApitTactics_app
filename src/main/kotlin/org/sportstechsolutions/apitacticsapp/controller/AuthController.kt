@@ -30,7 +30,6 @@ class AuthController(
     fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<TokenResponse> {
         val tokens = authService.login(request.email, request.password)
 
-        // Map AuthService.TokenPair to TokenResponse DTO
         val response = TokenResponse(
             accessToken = tokens.accessToken,
             refreshToken = tokens.refreshToken
@@ -52,14 +51,17 @@ class AuthController(
         return ResponseEntity.ok(response)
     }
 
-
     // ---------------- CURRENT USER ----------------
     @GetMapping("/me")
     fun me(): ResponseEntity<UserResponse> {
+        // 1. Get userId safely. If null (Guest), return 401 Unauthorized
         val userId = SecurityUtils.getCurrentUserId()
+            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated")
+
+        // 2. Fetch the user using the non-null ID
         val user = userService.getUserWithGroupsById(userId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "User not found")
+
         return ResponseEntity.ok(UserResponse.from(user))
     }
-
 }

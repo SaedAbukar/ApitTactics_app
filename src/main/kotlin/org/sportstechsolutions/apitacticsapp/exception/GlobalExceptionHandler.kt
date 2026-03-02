@@ -50,7 +50,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(apiError)
     }
 
-    // 2. NEW: Business Logic Validation (Thrown manually from Mapper/Service)
+    // 2. Business Logic Validation (Manual Throws)
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ApiError> {
         val apiError = ApiError(
@@ -61,7 +61,18 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(apiError)
     }
 
-    // 3. Resource not found
+    // 3. NEW: Resource Conflict (Locked Sessions, Duplicate entries, etc.)
+    @ExceptionHandler(ConflictException::class)
+    fun handleConflict(ex: ConflictException): ResponseEntity<ApiError> {
+        val apiError = ApiError(
+            status = HttpStatus.CONFLICT.value(),
+            error = "Conflict",
+            message = ex.message ?: "Resource is currently in use or in a conflicting state"
+        )
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError)
+    }
+
+    // 4. Resource not found
     @ExceptionHandler(ResourceNotFoundException::class)
     fun handleNotFound(ex: ResourceNotFoundException): ResponseEntity<ApiError> {
         val apiError = ApiError(
@@ -72,7 +83,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(apiError)
     }
 
-    // 4. Unauthorized access
+    // 5. Unauthorized access
     @ExceptionHandler(UnauthorizedException::class)
     fun handleUnauthorized(ex: UnauthorizedException): ResponseEntity<ApiError> {
         val apiError = ApiError(
@@ -83,13 +94,22 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiError)
     }
 
-    // 5. Fallback for all uncaught exceptions (sanitized)
+    // 6. Internal State Errors (Sanitized)
+    @ExceptionHandler(IllegalStateException::class)
+    fun handleIllegalState(ex: IllegalStateException): ResponseEntity<ApiError> {
+        val apiError = ApiError(
+            status = HttpStatus.CONFLICT.value(),
+            error = "Conflict",
+            message = ex.message ?: "The request could not be completed due to the current state of the resource"
+        )
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError)
+    }
+
+    // 7. Fallback for all uncaught exceptions
     @ExceptionHandler(Exception::class)
     fun handleAll(ex: Exception): ResponseEntity<ApiError> {
-        // Log the full exception for debugging
         logger.error("Unexpected error occurred", ex)
 
-        // Return sanitized message to client
         val apiError = ApiError(
             status = HttpStatus.INTERNAL_SERVER_ERROR.value(),
             error = "Internal Server Error",

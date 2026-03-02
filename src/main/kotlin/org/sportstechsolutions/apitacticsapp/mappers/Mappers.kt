@@ -13,15 +13,17 @@ fun List<FormationPositionRequest>.toFormationPositions(
     teamRepository: TeamRepository
 ): MutableList<FormationPosition> {
     return this.map { req ->
-        val team = req.teamName?.let { name ->
-            teamRepository.findByOwnerIdAndName(user.id, name)
+        val team = if (!req.teamName.isNullOrBlank()) {
+            teamRepository.findByOwnerIdAndName(user.id, req.teamName)
                 ?: teamRepository.save(
                     Team(
-                        name = name,
-                        color = req.teamColor ?: "white", // use request color, fallback to white
+                        name = req.teamName,
+                        color = req.teamColor ?: "white",
                         owner = user
                     )
                 )
+        } else {
+            null
         }
 
         FormationPosition(
@@ -37,80 +39,110 @@ fun List<FormationPositionRequest>.toFormationPositions(
 // -------------------------------------------------------------------
 
 object PracticeMapper {
-    fun toPracticeResponse(practice: Practice): PracticeResponse {
+    fun toPracticeResponse(practice: Practice, currentUserId: Int): PracticeResponse {
         return PracticeResponse(
-            id = practice.id,
-            name = practice.name,
-            description = practice.description,
-            isPremade = practice.is_premade,
+            id = practice.id ?: 0,
+            name = practice.name ?: "",
+            description = practice.description ?: "",
+            isPremade = practice.isPremade,
+            isPublic = practice.isPublic, // MAP VISIBILITY
             ownerId = practice.owner?.id ?: 0,
-            role = AccessRole.NONE, // Default, overwritten by EntityMappers
-            sessions = practice.sessions.map { toSessionResponse(it) }
-        )
-    }
-
-    // Helper for nested sessions within a Practice
-    internal fun toSessionResponse(session: Session): SessionResponse {
-        return SessionResponse(
-            id = session.id,
-            name = session.name,
-            description = session.description,
-            ownerId = session.owner?.id ?: 0,
-            // Inside a Practice, we default the session-specific role (usually Viewer or None)
-            // The UI context for a Practice is usually different from a standalone Session
             role = AccessRole.NONE,
-            steps = session.steps.map { toStepResponse(it) }
+
+            // Re-using the SessionMapper logic to ensure child sessions are fully mapped
+            sessions = practice.sessions.map { SessionMapper.toSessionResponse(it, currentUserId) },
+
+            // Taxonomy & Filters
+            phaseOfPlay = practice.phaseOfPlay,
+            ballContext = practice.ballContext,
+            drillFormat = practice.drillFormat,
+            minPlayers = practice.minPlayers,
+            maxPlayers = practice.maxPlayers,
+            durationMinutes = practice.durationMinutes,
+            areaSize = practice.areaSize,
+            targetAgeLevel = practice.targetAgeLevel,
+            tacticalActions = practice.tacticalActions.toSet(),
+            qualityMakers = practice.qualityMakers.toSet(),
+
+            // Engagement
+            viewCount = practice.viewCount,
+            isFavorite = practice.favoritedByUsers.any { it.id == currentUserId }
         )
     }
 
-    // Shared Step Mapper (Used by Practice, GameTactic, and Session Mappers)
+    // Shared Step Mapper
     fun toStepResponse(step: Step): StepResponse {
         return StepResponse(
             id = step.id,
-            players = step.players.map { p -> PlayerResponse(p.id, p.x, p.y, p.number, p.color, p.team?.id) },
-            balls = step.balls.map { b -> BallResponse(b.id, b.x, b.y, b.color) },
-            goals = step.goals.map { g -> GoalResponse(g.id, g.x, g.y, g.width, g.depth, g.color, g.rotation) },
-            teams = step.teams.map { t -> TeamResponse(t.id, t.name, t.color) },
+            players = step.players.map { p -> PlayerResponse(p.id ?: 0, p.x, p.y, p.number, p.color ?: "", p.team?.id) },
+            balls = step.balls.map { b -> BallResponse(b.id ?: 0, b.x, b.y, b.color) },
+            goals = step.goals.map { g -> GoalResponse(g.id ?: 0, g.x, g.y, g.width, g.depth, g.color, g.rotation) },
+            teams = step.teams.map { t -> TeamResponse(t.id ?: 0, t.name ?: "", t.color ?: "") },
             formations = step.formations.map { f ->
                 FormationResponse(
                     id = f.id,
                     name = f.name,
-                    positions = f.positions.map { p -> FormationPositionResponse(p.id, p.x, p.y, p.team?.id) }
+                    positions = f.positions.map { p -> FormationPositionResponse(p.id ?: 0, p.x, p.y, p.team?.id) }
                 )
             },
-            cones = step.cones.map { c -> ConeResponse(c.id, c.x, c.y, c.color) }
+            cones = step.cones.map { c -> ConeResponse(c.id ?: 0, c.x, c.y, c.color) }
         )
     }
 }
 
 object GameTacticMapper {
-    fun toGameTacticResponse(gameTactic: GameTactic): GameTacticResponse {
+    fun toGameTacticResponse(gameTactic: GameTactic, currentUserId: Int): GameTacticResponse {
         return GameTacticResponse(
-            id = gameTactic.id,
-            name = gameTactic.name,
-            description = gameTactic.description,
-            isPremade = gameTactic.is_premade,
+            id = gameTactic.id ?: 0,
+            name = gameTactic.name ?: "",
+            description = gameTactic.description ?: "",
+            isPremade = gameTactic.isPremade,
+            isPublic = gameTactic.isPublic, // MAP VISIBILITY
             ownerId = gameTactic.owner?.id ?: 0,
-            role = AccessRole.NONE, // Default, overwritten by EntityMappers
-            // Reuse the PracticeMapper session logic for consistency
-            sessions = gameTactic.sessions.map { PracticeMapper.toSessionResponse(it) }
+            role = AccessRole.NONE,
+
+            // Re-using the SessionMapper logic
+            sessions = gameTactic.sessions.map { SessionMapper.toSessionResponse(it, currentUserId) },
+
+            // Engagement
+            viewCount = gameTactic.viewCount,
+            isFavorite = gameTactic.favoritedByUsers.any { it.id == currentUserId }
         )
     }
 }
 
 object SessionMapper {
     // This is the base mapper used by EntityMappers.loadFullSession
-    fun toSessionResponse(session: Session): SessionResponse {
+    fun toSessionResponse(session: Session, currentUserId: Int): SessionResponse {
         return SessionResponse(
-            id = session.id,
-            name = session.name,
-            description = session.description,
+            id = session.id ?: 0,
+            name = session.name ?: "",
+            description = session.description ?: "",
+            isPremade = session.isPremade,
+            isPublic = session.isPublic, // MAP VISIBILITY
             ownerId = session.owner?.id ?: 0,
-            // Default role is NONE here.
-            // It is vital that EntityMappers.loadFullSession overwrites this
-            // using .copy(role = calculatedRole)
             role = AccessRole.NONE,
-            steps = session.steps.map { PracticeMapper.toStepResponse(it) }
+            steps = session.steps.map { PracticeMapper.toStepResponse(it) },
+
+            // AVOID CIRCULAR REFERENCE: Map parent IDs only
+            practiceIds = session.practices.mapNotNull { it.id },
+            gameTacticIds = session.gameTactics.mapNotNull { it.id },
+
+            // Taxonomy & Filters
+            phaseOfPlay = session.phaseOfPlay,
+            ballContext = session.ballContext,
+            drillFormat = session.drillFormat,
+            minPlayers = session.minPlayers,
+            maxPlayers = session.maxPlayers,
+            durationMinutes = session.durationMinutes,
+            areaSize = session.areaSize,
+            targetAgeLevel = session.targetAgeLevel,
+            tacticalActions = session.tacticalActions.toSet(),
+            qualityMakers = session.qualityMakers.toSet(),
+
+            // Engagement
+            viewCount = session.viewCount,
+            isFavorite = session.favoritedByUsers.any { it.id == currentUserId }
         )
     }
 }

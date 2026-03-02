@@ -4,29 +4,38 @@ import jakarta.persistence.*
 
 @Entity
 @Table(name = "game_tactic")
-data class GameTactic(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Int = 0,
+class GameTactic(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Int? = null,
+    var name: String?,
+    var description: String?,
 
-    var name: String = "",
-    var description: String = "",
-    var is_premade: Boolean = false,
+    @Column(name = "is_premade", nullable = false) var isPremade: Boolean = false,
+    @Column(name = "is_public", nullable = false) var isPublic: Boolean = false, // Added for Community Sharing
+    @Column(name = "view_count", nullable = false) var viewCount: Int = 0,
 
-    @ManyToOne
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "user_favorite_game_tactic",
+        joinColumns = [JoinColumn(name = "game_tactic_id")],
+        inverseJoinColumns = [JoinColumn(name = "user_id")]
+    )
+    var favoritedByUsers: MutableSet<User> = mutableSetOf(),
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     var owner: User? = null,
 
-    @OneToMany(mappedBy = "gameTactic", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val userAccess: MutableList<UserGameTacticAccess> = mutableListOf(),
-
-    @OneToMany(mappedBy = "gameTactic", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val groupAccess: MutableList<GroupGameTacticAccess> = mutableListOf(),
-
-    @ManyToMany(cascade = [CascadeType.PERSIST, CascadeType.MERGE])
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "session_game_tactic",
         joinColumns = [JoinColumn(name = "game_tactic_id")],
         inverseJoinColumns = [JoinColumn(name = "session_id")]
     )
-    val sessions: MutableList<Session> = mutableListOf()
+    var sessions: MutableSet<Session> = mutableSetOf(),
+
+    @OneToMany(mappedBy = "gameTactic", cascade = [CascadeType.ALL], orphanRemoval = true)
+    var userAccess: MutableSet<UserGameTacticAccess> = mutableSetOf(),
+
+    @OneToMany(mappedBy = "gameTactic", cascade = [CascadeType.ALL], orphanRemoval = true)
+    var groupAccess: MutableSet<GroupGameTacticAccess> = mutableSetOf()
 )

@@ -3,8 +3,8 @@ package org.sportstechsolutions.apitacticsapp.dtos
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.Valid
 import jakarta.validation.constraints.*
-import org.sportstechsolutions.apitacticsapp.model.AccessRole
 import jakarta.validation.constraints.NotNull
+import org.sportstechsolutions.apitacticsapp.model.*
 
 data class UpdateVisibilityRequest(
     @field:NotNull(message = "Visibility status is required")
@@ -46,6 +46,40 @@ data class RevokeGameTacticRequest(
     @field:NotNull val targetId: Int
 )
 
+// --- SEARCH REQUESTS ---
+data class PracticeSearchRequest(
+    val searchTerm: String? = null,
+    val phaseOfPlay: PhaseOfPlay? = null,
+    val ballContext: BallContext? = null,
+    val drillFormat: DrillFormat? = null,
+    val targetAgeLevel: String? = null,
+    val tacticalActions: Set<TacticalAction>? = null,
+    val qualityMakers: Set<QualityMaker>? = null,
+    val searchScope: SearchScope = SearchScope.ALL_ACCESSIBLE,
+    val onlyFavorites: Boolean = false,
+    val sortBy: SortBy = SortBy.RECENT
+)
+
+data class SessionSearchRequest(
+    val searchTerm: String? = null,
+    val phaseOfPlay: PhaseOfPlay? = null,
+    val ballContext: BallContext? = null,
+    val drillFormat: DrillFormat? = null,
+    val targetAgeLevel: String? = null,
+    val tacticalActions: Set<TacticalAction>? = null,
+    val qualityMakers: Set<QualityMaker>? = null,
+    val searchScope: SearchScope = SearchScope.ALL_ACCESSIBLE,
+    val onlyFavorites: Boolean = false,
+    val sortBy: SortBy = SortBy.RECENT
+)
+
+data class GameTacticSearchRequest(
+    val searchTerm: String? = null,
+    val searchScope: SearchScope = SearchScope.ALL_ACCESSIBLE,
+    val onlyFavorites: Boolean = false,
+    val sortBy: SortBy = SortBy.RECENT
+)
+
 
 data class PracticeRequest(
     @field:NotBlank(message = "Name is required")
@@ -54,10 +88,49 @@ data class PracticeRequest(
     @field:NotBlank(message = "Description is required")
     val description: String,
 
+    @param:JsonProperty("isPublic") @get:JsonProperty("isPublic")
+    val isPublic: Boolean = false, // NEW: Allow user to make it public on creation
+
     val isPremade: Boolean = false,
 
     @field:Valid
-    val sessions: List<@Valid SessionRequest> = emptyList()
+    val sessions: List<@Valid SessionRequest> = emptyList(),
+
+    val phaseOfPlay: PhaseOfPlay? = null,
+    val ballContext: BallContext? = null,
+    val drillFormat: DrillFormat? = null,
+    val minPlayers: Int? = null,
+    val maxPlayers: Int? = null,
+    val durationMinutes: Int? = null,
+    val areaSize: String? = null,
+    val targetAgeLevel: String? = null,
+    val tacticalActions: Set<TacticalAction> = emptySet(),
+    val qualityMakers: Set<QualityMaker> = emptySet()
+)
+
+data class SessionRequest(
+    val id: Int? = null,
+    val name: String? = null,
+    val description: String? = null,
+
+    @param:JsonProperty("isPublic") @get:JsonProperty("isPublic")
+    val isPublic: Boolean = false, // NEW: Allow user to make it public on creation
+
+    val isPremade: Boolean = false,
+
+    @field:Valid
+    val steps: List<@Valid StepRequest> = emptyList(),
+
+    val phaseOfPlay: PhaseOfPlay? = null,
+    val ballContext: BallContext? = null,
+    val drillFormat: DrillFormat? = null,
+    val minPlayers: Int? = null,
+    val maxPlayers: Int? = null,
+    val durationMinutes: Int? = null,
+    val areaSize: String? = null,
+    val targetAgeLevel: String? = null,
+    val tacticalActions: Set<TacticalAction> = emptySet(),
+    val qualityMakers: Set<QualityMaker> = emptySet()
 )
 
 data class GameTacticRequest(
@@ -67,25 +140,13 @@ data class GameTacticRequest(
     @field:NotBlank(message = "Description is required")
     val description: String,
 
+    @param:JsonProperty("isPublic") @get:JsonProperty("isPublic")
+    val isPublic: Boolean = false, // NEW: Allow user to make it public on creation
+
     val isPremade: Boolean = false,
 
     @field:Valid
     val sessions: List<@Valid SessionRequest> = emptyList()
-)
-
-// -----------------------------------------------------------
-// HYBRID REQUEST: Supports Creation (Data required) & Linking (ID only)
-// -----------------------------------------------------------
-data class SessionRequest(
-    val id: Int? = null,
-
-    // Nullable to allow linking existing sessions by ID only.
-    // Validation is now handled in EntityMappers.toSession()
-    val name: String? = null,
-    val description: String? = null,
-
-    @field:Valid
-    val steps: List<@Valid StepRequest> = emptyList()
 )
 
 data class StepRequest(
@@ -144,7 +205,7 @@ data class GoalRequest(
     @field:Min(value = 1, message = "Width must be at least 1")
     val width: Int,
 
-    @field:Min(value = 0, message = "Depth must be at least 1")
+    @field:Min(value = 1, message = "Depth must be at least 1")
     val depth: Int,
 
     val color: String? = null,

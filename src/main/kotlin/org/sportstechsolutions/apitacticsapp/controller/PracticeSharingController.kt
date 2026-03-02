@@ -10,6 +10,7 @@ import org.sportstechsolutions.apitacticsapp.service.PracticeSharingService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import org.springframework.security.access.AccessDeniedException
 
 @RestController
 @RequestMapping("/practices/share")
@@ -17,7 +18,10 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
 
     @GetMapping("/{practiceId}/collaborators")
     fun getCollaborators(@PathVariable practiceId: Int): ResponseEntity<List<CollaboratorDTO>> {
+        // GUEST PROTECTION: Prevent anonymous users from seeing collaboration data
         val currentUserId = SecurityUtils.getCurrentUserId()
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         val collaborators = sharingService.getPracticeCollaborators(currentUserId, practiceId)
         return ResponseEntity.ok(collaborators)
     }
@@ -28,6 +32,8 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
     @PostMapping("/user")
     fun shareWithUser(@RequestBody @Valid request: SharePracticeRequest): ResponseEntity<ShareResponse> {
         val currentUserId = SecurityUtils.getCurrentUserId()
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         sharingService.sharePracticeWithUser(currentUserId, request.practiceId, request.targetId, request.role)
         val response = ShareResponse(
             sessionId = request.practiceId,
@@ -42,6 +48,8 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeUserAccess(@RequestBody @Valid request: RevokePracticeRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
+            ?: throw AccessDeniedException("User must be logged in to modify sharing permissions")
+
         sharingService.revokePracticeFromUser(currentUserId, request.practiceId, request.targetId)
     }
 
@@ -51,6 +59,8 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
     @PostMapping("/group")
     fun shareWithGroup(@RequestBody @Valid request: SharePracticeRequest): ResponseEntity<ShareResponse> {
         val currentUserId = SecurityUtils.getCurrentUserId()
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         sharingService.sharePracticeWithGroup(currentUserId, request.practiceId, request.targetId, request.role)
         val response = ShareResponse(
             sessionId = request.practiceId,
@@ -65,6 +75,8 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeGroupAccess(@RequestBody @Valid request: RevokePracticeRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
+            ?: throw AccessDeniedException("User must be logged in to modify sharing permissions")
+
         sharingService.revokePracticeFromGroup(currentUserId, request.practiceId, request.targetId)
     }
 }

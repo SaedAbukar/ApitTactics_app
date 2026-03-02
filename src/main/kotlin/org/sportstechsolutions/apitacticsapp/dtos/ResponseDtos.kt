@@ -1,7 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.dtos
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import org.sportstechsolutions.apitacticsapp.model.AccessRole
+import org.sportstechsolutions.apitacticsapp.model.*
 
 data class PublicUserResponse(
     val id: Int,
@@ -18,75 +18,20 @@ data class UserProfileResponse(
     val message: String? = null
 )
 
-// --- 1. LIGHTWEIGHT SUMMARY (For Tabs) ---
-data class PracticeSummaryResponse(
-    val id: Int,
-    val name: String,
-    val description: String,
-    val isPremade: Boolean,
-    val ownerId: Int,
-    val sessions: List<SessionSummaryResponse>, // <--- Changed from sessionCount
-    val role: AccessRole
-)
-
-// --- 2. FULL DETAIL RESPONSE (For Tactic Board) ---
-data class PracticeResponse(
-    val id: Int,
-    val name: String,
-    val description: String,
-    val isPremade: Boolean,
-    val ownerId: Int,
-    val role: AccessRole,
-    val sessions: List<SessionResponse>
-)
-
-// --- 1. LIGHTWEIGHT SUMMARY (For Tabs) ---
-data class GameTacticSummaryResponse(
-    val id: Int,
-    val name: String,
-    val description: String,
-    val isPremade: Boolean,
-    val ownerId: Int,
-    val sessions: List<SessionSummaryResponse>, // <--- Changed from sessionCount
-    val role: AccessRole
-)
-
-// --- 2. FULL DETAIL RESPONSE (For Tactic Board) ---
-data class GameTacticResponse(
-    val id: Int,
-    val name: String,
-    val description: String,
-    val isPremade: Boolean,
-    val ownerId: Int,
-    val role: AccessRole,
-    val sessions: List<SessionResponse>
-)
-
-// 1. The Lightweight Summary (For Tabs)
-data class SessionSummaryResponse(
-    val id: Int,
-    val name: String,
-    val description: String,
-    val ownerId: Int,
-    val stepCount: Int,
-    val role: AccessRole // <--- Added
-)
-
-// 2. The Full Detail Response (For the Tactic Board)
-// Ensure your existing SessionResponse looks like this or has these fields added
-data class SessionResponse(
-    val id: Int,
-    val name: String,
-    val description: String,
-    val ownerId: Int,
-    val steps: List<StepResponse>, // The heavy list
-    val role: AccessRole // <--- Added
+// --- PAGINATION WRAPPERS ---
+data class PagedResponse<T>(
+    val content: List<T>,
+    val pageNumber: Int,
+    val pageSize: Int,
+    val totalElements: Long,
+    val totalPages: Int,
+    val isLast: Boolean
 )
 
 data class TabbedResponse<T>(
-    val personalItems: List<T> = emptyList(),
-    val userSharedItems: List<T> = emptyList(),
-    val groupSharedItems: List<T> = emptyList()
+    val personalItems: PagedResponse<T>,
+    val userSharedItems: PagedResponse<T>,
+    val groupSharedItems: PagedResponse<T>
 )
 
 data class ShareResponse(
@@ -95,6 +40,165 @@ data class ShareResponse(
     val role: AccessRole,
     val message: String
 )
+
+// --- 1. LIGHTWEIGHT SUMMARIES (For Tabs & Search) ---
+
+data class PracticeSummaryResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean, // Added for visibility
+    val ownerId: Int,
+    val sessions: List<SessionSummaryResponse>,
+    val role: AccessRole,
+
+    // Taxonomy & Filters
+    val phaseOfPlay: PhaseOfPlay?,
+    val ballContext: BallContext?,
+    val drillFormat: DrillFormat?,
+    val minPlayers: Int?,
+    val maxPlayers: Int?,
+    val durationMinutes: Int?,
+    val areaSize: String?,
+    val targetAgeLevel: String?,
+    val tacticalActions: Set<TacticalAction>,
+    val qualityMakers: Set<QualityMaker>,
+
+    // Engagement
+    val viewCount: Int,
+    val isFavorite: Boolean
+)
+
+data class SessionSummaryResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean, // Added for visibility
+    val ownerId: Int,
+    val stepCount: Int,
+    val role: AccessRole,
+
+    // Parent Tracking (Anti-Circular)
+    val practiceIds: List<Int>,
+    val gameTacticIds: List<Int>,
+
+    // Taxonomy & Filters
+    val phaseOfPlay: PhaseOfPlay?,
+    val ballContext: BallContext?,
+    val drillFormat: DrillFormat?,
+    val minPlayers: Int?,
+    val maxPlayers: Int?,
+    val durationMinutes: Int?,
+    val areaSize: String?,
+    val targetAgeLevel: String?,
+    val tacticalActions: Set<TacticalAction>,
+    val qualityMakers: Set<QualityMaker>,
+
+    // Engagement
+    val viewCount: Int,
+    val isFavorite: Boolean
+)
+
+data class GameTacticSummaryResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean, // Added for visibility
+    val ownerId: Int,
+    val sessions: List<SessionSummaryResponse>,
+    val role: AccessRole,
+
+    // Engagement
+    val viewCount: Int,
+    val isFavorite: Boolean
+)
+
+
+// --- 2. FULL DETAIL RESPONSES (For Tactic Board & Execution) ---
+
+data class PracticeResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean,
+    val ownerId: Int,
+    val role: AccessRole,
+    val sessions: List<SessionResponse>,
+
+    // Taxonomy & Filters
+    val phaseOfPlay: PhaseOfPlay?,
+    val ballContext: BallContext?,
+    val drillFormat: DrillFormat?,
+    val minPlayers: Int?,
+    val maxPlayers: Int?,
+    val durationMinutes: Int?,
+    val areaSize: String?,
+    val targetAgeLevel: String?,
+    val tacticalActions: Set<TacticalAction>,
+    val qualityMakers: Set<QualityMaker>,
+
+    // Engagement
+    val viewCount: Int,
+    val isFavorite: Boolean
+)
+
+data class SessionResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean,
+    val ownerId: Int,
+    val steps: List<StepResponse>, // The heavy list
+    val role: AccessRole,
+
+    // Parent Tracking (Anti-Circular)
+    val practiceIds: List<Int>,
+    val gameTacticIds: List<Int>,
+
+    // Taxonomy & Filters
+    val phaseOfPlay: PhaseOfPlay?,
+    val ballContext: BallContext?,
+    val drillFormat: DrillFormat?,
+    val minPlayers: Int?,
+    val maxPlayers: Int?,
+    val durationMinutes: Int?,
+    val areaSize: String?,
+    val targetAgeLevel: String?,
+    val tacticalActions: Set<TacticalAction>,
+    val qualityMakers: Set<QualityMaker>,
+
+    // Engagement
+    val viewCount: Int,
+    val isFavorite: Boolean
+)
+
+data class GameTacticResponse(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val isPremade: Boolean,
+    @get:JsonProperty("isPublic")
+    val isPublic: Boolean,
+    val ownerId: Int,
+    val role: AccessRole,
+    val sessions: List<SessionResponse>,
+
+    // Engagement
+    val viewCount: Int,
+    val isFavorite: Boolean
+)
+
+// --- 3. CANVAS ELEMENTS (Unchanged) ---
 
 data class StepResponse(
     val id: Int,

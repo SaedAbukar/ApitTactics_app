@@ -1,16 +1,25 @@
 package org.sportstechsolutions.apitacticsapp.security
-
-import org.sportstechsolutions.apitacticsapp.model.User
+import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 
 object SecurityUtils {
-    fun getCurrentUserId(): Int {
-        val principal = SecurityContextHolder.getContext().authentication?.principal
-            ?: throw IllegalStateException("No authentication in context")
+    fun getCurrentUserId(): Int? {
+        val auth = SecurityContextHolder.getContext().authentication
+
+        // Return null for null auth, unauthenticated requests, or the Anonymous token
+        if (auth == null || !auth.isAuthenticated || auth is AnonymousAuthenticationToken) {
+            return null
+        }
+
+        val principal = auth.principal ?: return null
+
         return when (principal) {
             is Int -> principal
-            is String -> principal.toInt()
-            else -> throw IllegalStateException("Invalid principal type")
+            is String -> {
+                // If the principal isn't numeric (like "anonymousUser"), toIntOrNull returns null
+                principal.toIntOrNull()
+            }
+            else -> null
         }
     }
 }

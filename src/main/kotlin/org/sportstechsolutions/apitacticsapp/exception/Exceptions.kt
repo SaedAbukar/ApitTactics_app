@@ -8,3 +8,7 @@ class ResourceNotFoundException(message: String) : RuntimeException(message)
 
 @ResponseStatus(HttpStatus.FORBIDDEN)
 class UnauthorizedException(message: String) : RuntimeException(message)
+
+// NEW: For business rule violations (like deleting a session in use)
+@ResponseStatus(HttpStatus.CONFLICT)
+class ConflictException(message: String) : RuntimeException(message)

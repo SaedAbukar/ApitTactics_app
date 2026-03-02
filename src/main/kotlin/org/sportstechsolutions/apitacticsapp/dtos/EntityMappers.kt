@@ -9,10 +9,9 @@ import org.springframework.stereotype.Component
 class EntityMappers(private val teamRepository: TeamRepository) {
 
     // ------------------------------------------------------------
-    // SESSION CREATION (With Manual Validation)
+    // SESSION CREATION (Request -> Entity)
     // ------------------------------------------------------------
     fun toSession(req: SessionRequest, owner: User): Session {
-        // Validation: Since DTO allows nulls (for linking), we must check here for creation.
         if (req.name.isNullOrBlank()) {
             throw IllegalArgumentException("Session name is required when creating a new session")
         }
@@ -23,7 +22,19 @@ class EntityMappers(private val teamRepository: TeamRepository) {
         val session = Session(
             name = req.name,
             description = req.description,
-            owner = owner
+            owner = owner,
+            isPremade = req.isPremade,
+            isPublic = req.isPublic, // Map isPublic from request
+            phaseOfPlay = req.phaseOfPlay,
+            ballContext = req.ballContext,
+            drillFormat = req.drillFormat,
+            minPlayers = req.minPlayers,
+            maxPlayers = req.maxPlayers,
+            durationMinutes = req.durationMinutes,
+            areaSize = req.areaSize,
+            targetAgeLevel = req.targetAgeLevel,
+            tacticalActions = req.tacticalActions.toMutableSet(),
+            qualityMakers = req.qualityMakers.toMutableSet()
         )
         session.steps.addAll(req.steps.map { toStep(it, session, owner) })
         return session
@@ -45,19 +56,18 @@ class EntityMappers(private val teamRepository: TeamRepository) {
     fun toStep(req: StepRequest, session: Session, user: User): Step {
         val step = Step(session = session)
 
-        // Map players
         step.players.addAll(req.players.map { p ->
-            val team = p.teamName?.let { name ->
-                teamRepository.findByOwnerIdAndName(user.id, name)
-                    ?: teamRepository.save(Team(name = name, color = p.color, owner = user))
+            val team = if (!p.teamName.isNullOrBlank()) {
+                teamRepository.findByOwnerIdAndName(user.id, p.teamName)
+                    ?: teamRepository.save(Team(name = p.teamName, color = p.color, owner = user))
+            } else {
+                null
             }
             Player(step = step, x = p.x, y = p.y, number = p.number, color = p.color, team = team)
         })
 
-        // Map balls, goals, cones
         step.balls.addAll(req.balls.map { Ball(step = step, x = it.x, y = it.y, color = it.color) })
 
-        // ✅ Updated Goal mapping to include rotation
         step.goals.addAll(req.goals.map {
             Goal(
                 step = step,
@@ -72,14 +82,12 @@ class EntityMappers(private val teamRepository: TeamRepository) {
 
         step.cones.addAll(req.cones.map { Cone(step = step, x = it.x, y = it.y, color = it.color) })
 
-        // Map teams
         req.teams.forEach { t ->
             val team = teamRepository.findByOwnerIdAndName(user.id, t.name)
                 ?: teamRepository.save(Team(name = t.name, color = t.color, owner = user))
             step.teams.add(team)
         }
 
-        // Map formations
         step.formations.addAll(req.formations.map { f ->
             Formation(step = step, name = f.name, positions = f.positions.toFormationPositions(user, teamRepository))
         })
@@ -88,80 +96,121 @@ class EntityMappers(private val teamRepository: TeamRepository) {
     }
 
     // ------------------------------------------------------------
-    // RESPONSE MAPPING (Summaries & Full)
+    // RESPONSE MAPPING (Entity -> DTO)
     // ------------------------------------------------------------
 
-    // SESSION
-    fun toSessionSummary(session: Session, role: AccessRole): SessionSummaryResponse {
+    // SESSION SUMMARY
+    fun toSessionSummary(session: Session, role: AccessRole, currentUserId: Int): SessionSummaryResponse {
         return SessionSummaryResponse(
-            id = session.id,
-            name = session.name,
-            description = session.description,
+            id = session.id ?: 0,
+            name = session.name ?: "",
+            description = session.description ?: "",
+            isPremade = session.isPremade,
+            isPublic = session.isPublic, // Map isPublic to response
             ownerId = session.owner?.id ?: 0,
             stepCount = session.steps.size,
-            role = role
+            role = role,
+
+            practiceIds = session.practices.mapNotNull { it.id },
+            gameTacticIds = session.gameTactics.mapNotNull { it.id },
+
+            phaseOfPlay = session.phaseOfPlay,
+            ballContext = session.ballContext,
+            drillFormat = session.drillFormat,
+            minPlayers = session.minPlayers,
+            maxPlayers = session.maxPlayers,
+            durationMinutes = session.durationMinutes,
+            areaSize = session.areaSize,
+            targetAgeLevel = session.targetAgeLevel,
+            tacticalActions = session.tacticalActions.toSet(),
+            qualityMakers = session.qualityMakers.toSet(),
+
+            viewCount = session.viewCount,
+            isFavorite = session.favoritedByUsers.any { it.id == currentUserId }
         )
     }
 
-    fun loadFullSession(session: Session, role: AccessRole = AccessRole.OWNER): SessionResponse {
-        // Trigger lazy loading for batch fetching
+    // FULL SESSION
+    fun loadFullSession(session: Session, role: AccessRole = AccessRole.OWNER, currentUserId: Int): SessionResponse {
         session.steps.forEach { step ->
             step.players.size; step.balls.size; step.goals.size; step.teams.size; step.cones.size
             step.formations.forEach { it.positions.size }
         }
-        val baseResponse = SessionMapper.toSessionResponse(session)
+        session.practices.size
+        session.gameTactics.size
+
+        val baseResponse = SessionMapper.toSessionResponse(session, currentUserId)
         return baseResponse.copy(role = role)
     }
 
-    // PRACTICE
-    fun toPracticeSummary(practice: Practice, role: AccessRole): PracticeSummaryResponse {
+    // PRACTICE SUMMARY
+    fun toPracticeSummary(practice: Practice, role: AccessRole, currentUserId: Int): PracticeSummaryResponse {
         return PracticeSummaryResponse(
-            id = practice.id,
-            name = practice.name,
-            description = practice.description,
-            isPremade = practice.is_premade,
+            id = practice.id ?: 0,
+            name = practice.name ?: "",
+            description = practice.description ?: "",
+            isPremade = practice.isPremade,
+            isPublic = practice.isPublic, // Map isPublic to response
             ownerId = practice.owner?.id ?: 0,
-            sessions = practice.sessions.map { session ->
-                toSessionSummary(session, AccessRole.NONE)
-            },
-            role = role
+            sessions = practice.sessions.map { toSessionSummary(it, AccessRole.NONE, currentUserId) },
+            role = role,
+            phaseOfPlay = practice.phaseOfPlay,
+            ballContext = practice.ballContext,
+            drillFormat = practice.drillFormat,
+            minPlayers = practice.minPlayers,
+            maxPlayers = practice.maxPlayers,
+            durationMinutes = practice.durationMinutes,
+            areaSize = practice.areaSize,
+            targetAgeLevel = practice.targetAgeLevel,
+            tacticalActions = practice.tacticalActions.toSet(),
+            qualityMakers = practice.qualityMakers.toSet(),
+            viewCount = practice.viewCount,
+            isFavorite = practice.favoritedByUsers.any { it.id == currentUserId }
         )
     }
 
-    fun loadFullPractice(practice: Practice, role: AccessRole = AccessRole.OWNER): PracticeResponse {
+    // FULL PRACTICE
+    fun loadFullPractice(practice: Practice, role: AccessRole = AccessRole.OWNER, currentUserId: Int): PracticeResponse {
         practice.sessions.forEach { session ->
             session.steps.forEach { step ->
                 step.players.size; step.balls.size; step.goals.size; step.teams.size; step.cones.size
                 step.formations.forEach { it.positions.size }
             }
+            session.practices.size
+            session.gameTactics.size
         }
-        val baseResponse = PracticeMapper.toPracticeResponse(practice)
+
+        val baseResponse = PracticeMapper.toPracticeResponse(practice, currentUserId)
         return baseResponse.copy(role = role, ownerId = practice.owner?.id ?: 0)
     }
 
-    // GAME TACTIC
-    fun toGameTacticSummary(gameTactic: GameTactic, role: AccessRole): GameTacticSummaryResponse {
+    // GAME TACTIC SUMMARY
+    fun toGameTacticSummary(gameTactic: GameTactic, role: AccessRole, currentUserId: Int): GameTacticSummaryResponse {
         return GameTacticSummaryResponse(
-            id = gameTactic.id,
-            name = gameTactic.name,
-            description = gameTactic.description,
-            isPremade = gameTactic.is_premade,
+            id = gameTactic.id ?: 0,
+            name = gameTactic.name ?: "",
+            description = gameTactic.description ?: "",
+            isPremade = gameTactic.isPremade,
+            isPublic = gameTactic.isPublic, // Map isPublic to response
             ownerId = gameTactic.owner?.id ?: 0,
-            sessions = gameTactic.sessions.map { session ->
-                toSessionSummary(session, AccessRole.NONE)
-            },
-            role = role
+            sessions = gameTactic.sessions.map { toSessionSummary(it, AccessRole.NONE, currentUserId) },
+            role = role,
+            viewCount = gameTactic.viewCount,
+            isFavorite = gameTactic.favoritedByUsers.any { it.id == currentUserId }
         )
     }
 
-    fun loadFullGameTactic(gameTactic: GameTactic, role: AccessRole = AccessRole.OWNER): GameTacticResponse {
+    // FULL GAME TACTIC
+    fun loadFullGameTactic(gameTactic: GameTactic, role: AccessRole = AccessRole.OWNER, currentUserId: Int): GameTacticResponse {
         gameTactic.sessions.forEach { session ->
             session.steps.forEach { step ->
                 step.players.size; step.balls.size; step.goals.size; step.teams.size; step.cones.size
                 step.formations.forEach { it.positions.size }
             }
+            session.practices.size
+            session.gameTactics.size
         }
-        val baseResponse = GameTacticMapper.toGameTacticResponse(gameTactic)
+        val baseResponse = GameTacticMapper.toGameTacticResponse(gameTactic, currentUserId)
         return baseResponse.copy(role = role, ownerId = gameTactic.owner?.id ?: 0)
     }
 }

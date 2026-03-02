@@ -2,11 +2,18 @@ package org.sportstechsolutions.apitacticsapp.repository
 
 import org.sportstechsolutions.apitacticsapp.model.Session
 import org.sportstechsolutions.apitacticsapp.model.UserSessionAccess
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 
-
 interface UserSessionAccessRepository : JpaRepository<UserSessionAccess, Int> {
+
+    // Paginated version (Used in the Tabs)
+    fun findByUserId(userId: Int, pageable: Pageable): Page<UserSessionAccess>
+
+    // Standard List version
     fun findByUserId(userId: Int): List<UserSessionAccess>
+
     fun findByUserIdAndSessionId(userId: Int, sessionId: Int): UserSessionAccess?
     fun findBySessionId(sessionId: Int): List<UserSessionAccess>
 
