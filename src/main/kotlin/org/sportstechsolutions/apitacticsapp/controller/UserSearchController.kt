@@ -2,6 +2,7 @@ package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.*
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.UserService
@@ -21,7 +22,7 @@ class UserSearchController(private val userService: UserService) {
     ): ResponseEntity<Slice<PublicUserResponse>> {
         // Standardized exception throwing instead of raw ResponseEntity builds
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to search for users")
+            ?: throw UnauthenticatedException("You must be logged in to search for users")
 
         val results = userService.searchPublicUsers(query, page, size, currentUserId).map { user ->
             PublicUserResponse(
@@ -40,7 +41,7 @@ class UserSearchController(private val userService: UserService) {
     ): ResponseEntity<UserProfileResponse> {
         // Standardized exception throwing
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to modify your profile visibility")
+            ?: throw UnauthenticatedException("You must be logged in to modify your profile visibility")
 
         val updatedUser = userService.togglePublicStatus(userId, request.isPublic)
 

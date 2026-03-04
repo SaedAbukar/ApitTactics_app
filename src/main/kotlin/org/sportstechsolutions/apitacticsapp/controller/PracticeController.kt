@@ -2,6 +2,7 @@ package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.*
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.SearchScope
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
@@ -21,7 +22,7 @@ class PracticeController(private val practiceService: PracticeService) {
         @PageableDefault(size = 5, page = 0) pageable: Pageable
     ): ResponseEntity<TabbedResponse<PracticeSummaryResponse>> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to view tabbed practices")
+            ?: throw UnauthenticatedException("You must be logged in to view tabbed practices")
 
         return ResponseEntity.ok(practiceService.getPracticesForTabs(userId, pageable))
     }
@@ -54,7 +55,7 @@ class PracticeController(private val practiceService: PracticeService) {
     @PostMapping
     fun createPractice(@RequestBody @Valid request: PracticeRequest): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to create a practice")
+            ?: throw UnauthenticatedException("You must be logged in to create a practice")
 
         val practice = practiceService.createPractice(userId, request)
         return ResponseEntity.status(HttpStatus.CREATED).body(practice)
@@ -67,7 +68,7 @@ class PracticeController(private val practiceService: PracticeService) {
         @RequestParam(required = false) groupId: Int? = null
     ): ResponseEntity<PracticeResponse> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to update a practice")
+            ?: throw UnauthenticatedException("You must be logged in to update a practice")
 
         val updated = practiceService.updatePractice(userId, id, request, groupId)
         return ResponseEntity.ok(updated)
@@ -76,7 +77,7 @@ class PracticeController(private val practiceService: PracticeService) {
     @PostMapping("/{id}/favorite")
     fun toggleFavorite(@PathVariable id: Int): ResponseEntity<Map<String, Boolean>> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to favorite a practice")
+            ?: throw UnauthenticatedException("You must be logged in to favorite a practice")
 
         val isFavoriteNow = practiceService.toggleFavorite(userId, id)
         return ResponseEntity.ok(mapOf("isFavorite" to isFavoriteNow))
@@ -89,7 +90,7 @@ class PracticeController(private val practiceService: PracticeService) {
         @RequestParam(required = false) groupId: Int? = null
     ) {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to delete content")
+            ?: throw UnauthenticatedException("You must be logged in to delete content")
 
         practiceService.deletePractice(userId, id, groupId)
     }

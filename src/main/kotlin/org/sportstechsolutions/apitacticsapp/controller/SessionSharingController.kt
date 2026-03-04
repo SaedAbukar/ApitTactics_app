@@ -5,6 +5,7 @@ import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.dtos.RevokeSessionRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareResponse
 import org.sportstechsolutions.apitacticsapp.dtos.ShareSessionRequest
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.SessionSharingService
 import org.springframework.http.HttpStatus
@@ -47,7 +48,7 @@ class SessionSharingController(private val sharingService: SessionSharingService
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeUserAccess(@RequestBody @Valid request: RevokeSessionRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw AccessDeniedException("User must be logged in to revoke access")
+            ?: throw UnauthenticatedException("User must be logged in to revoke access")
 
         sharingService.revokeSessionFromUser(currentUserId, request.sessionId, request.targetId)
     }
@@ -70,7 +71,7 @@ class SessionSharingController(private val sharingService: SessionSharingService
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeGroupAccess(@RequestBody @Valid request: RevokeSessionRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw AccessDeniedException("User must be logged in to revoke access")
+            ?: throw UnauthenticatedException("User must be logged in to revoke access")
 
         sharingService.revokeSessionFromGroup(currentUserId, request.sessionId, request.targetId)
     }

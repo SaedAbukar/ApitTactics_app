@@ -2,7 +2,7 @@ package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.*
-import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.security.AuthService
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.UserService
@@ -54,13 +54,13 @@ class AuthController(
     // ---------------- CURRENT USER ----------------
     @GetMapping("/me")
     fun me(): ResponseEntity<UserResponse> {
-        // 1. Standardized Unauthorized check
+        // 1. Correctly throw 401 Unauthenticated instead of 403 Forbidden
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("Not authenticated")
+            ?: throw UnauthenticatedException("You are not authenticated. Please log in.")
 
         // 2. Fetch the user.
-        // Note: The null check and ResponseStatusException were removed because
-        // the refactored UserService now safely throws ResourceNotFoundException automatically!
+        // The refactored UserService automatically throws a 404 ResourceNotFoundException
+        // if the user ID from the token no longer exists in the database.
         val user = userService.getUserWithGroupsById(userId)
 
         return ResponseEntity.ok(UserResponse.from(user))

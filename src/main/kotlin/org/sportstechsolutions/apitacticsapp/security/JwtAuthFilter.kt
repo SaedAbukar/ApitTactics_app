@@ -3,15 +3,20 @@ package org.sportstechsolutions.apitacticsapp.security
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+import org.springframework.web.servlet.HandlerExceptionResolver
 
 @Component
 class JwtAuthFilter(
-    private val jwtService: JwtService
+    private val jwtService: JwtService,
+    // This allows us to forward filter errors to your GlobalExceptionHandler!
+    @Qualifier("handlerExceptionResolver") private val resolver: HandlerExceptionResolver
 ): OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -19,34 +24,28 @@ class JwtAuthFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        val authHeader = request.getHeader("Authorization")
+        try {
+            val authHeader = request.getHeader("Authorization")
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            // CRITICAL: Remove "Bearer " (7 characters) to get just the token
-            val token = authHeader.substring(7)
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                val token = authHeader.substring(7)
 
-            try {
                 if (jwtService.validateAccessToken(token)) {
                     val userId = jwtService.getUserIdFromToken(token)
 
-                    // Create the Auth object
                     val auth = UsernamePasswordAuthenticationToken(userId, null, emptyList())
-
-                    // Link the request details (IP, Session, etc.)
                     auth.details = WebAuthenticationDetailsSource().buildDetails(request)
 
-                    // Set the security context
                     SecurityContextHolder.getContext().authentication = auth
                 }
-            } catch (e: Exception) {
-                // This prevents the 500 Error. It logs the problem and
-                // simply fails to authenticate the user for this request.
-                println("JWT Auth Error: ${e.message}")
-                SecurityContextHolder.clearContext()
             }
-        }
+            filterChain.doFilter(request, response)
 
-        // Always continue the filter chain
-        filterChain.doFilter(request, response)
+        } catch (e: Exception) {
+            SecurityContextHolder.clearContext()
+
+            // Bridge the exception to your GlobalExceptionHandler so it returns your ApiError JSON
+            resolver.resolveException(request, response, null, UnauthenticatedException("Invalid or expired access token."))
+        }
     }
 }

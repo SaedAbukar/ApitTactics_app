@@ -3,10 +3,9 @@ package org.sportstechsolutions.apitacticsapp.security
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.http.HttpStatusCode
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.Date
@@ -17,24 +16,17 @@ class JwtService(
     @Value("\${jwt.secret}") private val jwtSecret: String
 ) {
 
-    // SAFE INITIALIZATION: Try Base64 first, fallback to UTF-8 bytes if it fails.
-    // This prevents the 500 error if your Render Environment variable is Hex or raw text.
     private val secretKey: SecretKey = try {
         val decodedKey = Base64.getDecoder().decode(jwtSecret)
         Keys.hmacShaKeyFor(decodedKey)
     } catch (e: Exception) {
-        // Fallback for non-base64 strings (like Hex or plain text)
         Keys.hmacShaKeyFor(jwtSecret.toByteArray(StandardCharsets.UTF_8))
     }
 
     private val accessTokenValidityMs = 15L * 60L * 1000L
     val refreshTokenValidityMs = 30L * 24 * 60 * 60 * 1000L
 
-    private fun generateToken(
-        userId: String,
-        type: String,
-        expiry: Long
-    ): String {
+    private fun generateToken(userId: String, type: String, expiry: Long): String {
         val now = Date()
         val expiryDate = Date(now.time + expiry)
         return Jwts.builder()
@@ -67,15 +59,12 @@ class JwtService(
     }
 
     fun getUserIdFromToken(token: String): Int {
-        val claims = parseAllClaims(token) ?: throw ResponseStatusException(
-            HttpStatusCode.valueOf(401),
-            "Invalid token."
-        )
+        val claims = parseAllClaims(token)
+            ?: throw UnauthenticatedException("Invalid or expired token.")
         return claims.subject.toInt()
     }
 
     private fun parseAllClaims(token: String): Claims? {
-        // Clean the token in case the "Bearer " prefix was passed in
         val rawToken = if (token.startsWith("Bearer ")) {
             token.substring(7)
         } else token
@@ -87,8 +76,7 @@ class JwtService(
                 .parseSignedClaims(rawToken)
                 .payload
         } catch (e: Exception) {
-            // Logs the error to Render console so you can debug token failures
-            println("JWT Parsing failed: \${e.message}")
+            println("JWT Validation failed: ${e.message}")
             null
         }
     }

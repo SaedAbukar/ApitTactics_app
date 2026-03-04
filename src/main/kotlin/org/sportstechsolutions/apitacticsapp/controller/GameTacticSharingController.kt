@@ -5,6 +5,7 @@ import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.dtos.RevokeGameTacticRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareGameTacticRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareResponse
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.GameTacticSharingService
 import org.springframework.http.HttpStatus
@@ -48,7 +49,7 @@ class GameTacticSharingController(private val sharingService: GameTacticSharingS
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeUserAccess(@RequestBody @Valid request: RevokeGameTacticRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw AccessDeniedException("User must be logged in to modify sharing permissions")
+            ?: throw UnauthenticatedException("User must be logged in to modify sharing permissions")
 
         sharingService.revokeGameTacticFromUser(currentUserId, request.gameTacticId, request.targetId)
     }
@@ -75,7 +76,7 @@ class GameTacticSharingController(private val sharingService: GameTacticSharingS
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeGroupAccess(@RequestBody @Valid request: RevokeGameTacticRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw AccessDeniedException("User must be logged in to modify sharing permissions")
+            ?: throw UnauthenticatedException("User must be logged in to modify sharing permissions")
 
         sharingService.revokeGameTacticFromGroup(currentUserId, request.gameTacticId, request.targetId)
     }

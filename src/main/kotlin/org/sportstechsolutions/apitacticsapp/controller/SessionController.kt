@@ -2,6 +2,7 @@ package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.*
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.SearchScope
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
@@ -21,7 +22,7 @@ class SessionController(private val sessionService: SessionService) {
         @PageableDefault(size = 10, page = 0) pageable: Pageable
     ): ResponseEntity<TabbedResponse<SessionSummaryResponse>> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to view tabbed sessions")
+            ?: throw UnauthenticatedException("You must be logged in to view tabbed sessions")
 
         return ResponseEntity.ok(sessionService.getSessionsForTabs(userId, pageable))
     }
@@ -54,7 +55,7 @@ class SessionController(private val sessionService: SessionService) {
     @PostMapping
     fun createSession(@RequestBody @Valid request: SessionRequest): ResponseEntity<SessionResponse> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to create a session")
+            ?: throw UnauthenticatedException("You must be logged in to create a session")
 
         val session = sessionService.createSession(userId, request)
         return ResponseEntity.status(HttpStatus.CREATED).body(session)
@@ -67,7 +68,7 @@ class SessionController(private val sessionService: SessionService) {
         @RequestParam(required = false) groupId: Int? = null
     ): ResponseEntity<SessionResponse> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to update a session")
+            ?: throw UnauthenticatedException("You must be logged in to update a session")
 
         val updated = sessionService.updateSession(userId, id, request, groupId)
         return ResponseEntity.ok(updated)
@@ -76,7 +77,7 @@ class SessionController(private val sessionService: SessionService) {
     @PostMapping("/{id}/favorite")
     fun toggleFavorite(@PathVariable id: Int): ResponseEntity<Map<String, Boolean>> {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to favorite a session")
+            ?: throw UnauthenticatedException("You must be logged in to favorite a session")
 
         val isFavoriteNow = sessionService.toggleFavorite(userId, id)
         return ResponseEntity.ok(mapOf("isFavorite" to isFavoriteNow))
@@ -89,7 +90,7 @@ class SessionController(private val sessionService: SessionService) {
         @RequestParam(required = false) groupId: Int? = null
     ) {
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw UnauthorizedException("You must be logged in to delete content")
+            ?: throw UnauthenticatedException("You must be logged in to delete content")
 
         sessionService.deleteSession(userId, id, groupId)
     }

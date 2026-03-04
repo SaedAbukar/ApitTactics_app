@@ -5,6 +5,7 @@ import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
 import org.sportstechsolutions.apitacticsapp.dtos.RevokePracticeRequest
 import org.sportstechsolutions.apitacticsapp.dtos.SharePracticeRequest
 import org.sportstechsolutions.apitacticsapp.dtos.ShareResponse
+import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.PracticeSharingService
 import org.springframework.http.HttpStatus
@@ -48,7 +49,7 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeUserAccess(@RequestBody @Valid request: RevokePracticeRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw AccessDeniedException("User must be logged in to modify sharing permissions")
+            ?: throw UnauthenticatedException("User must be logged in to modify sharing permissions")
 
         sharingService.revokePracticeFromUser(currentUserId, request.practiceId, request.targetId)
     }
@@ -75,7 +76,7 @@ class PracticeSharingController(private val sharingService: PracticeSharingServi
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun revokeGroupAccess(@RequestBody @Valid request: RevokePracticeRequest) {
         val currentUserId = SecurityUtils.getCurrentUserId()
-            ?: throw AccessDeniedException("User must be logged in to modify sharing permissions")
+            ?: throw UnauthenticatedException("User must be logged in to modify sharing permissions")
 
         sharingService.revokePracticeFromGroup(currentUserId, request.practiceId, request.targetId)
     }
