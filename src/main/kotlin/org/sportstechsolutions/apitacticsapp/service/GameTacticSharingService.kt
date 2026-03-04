@@ -1,7 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.service
 
 import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
-import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.*
@@ -19,19 +18,25 @@ class GameTacticSharingService(
 
     @Transactional(readOnly = true)
     fun getGameTacticCollaborators(ownerId: Int, tacticId: Int): List<CollaboratorDTO> {
-        val tactic = gameTacticRepository.findById(tacticId).orElseThrow { ResourceNotFoundException("Tactic not found") }
-        if (tactic.owner?.id != ownerId) throw UnauthorizedException("Access denied")
+        // Fast ownership check without loading the entire GameTactic entity into memory
+        if (!gameTacticRepository.existsByIdAndOwnerId(tacticId, ownerId)) {
+            throw UnauthorizedException("Only the owner can view collaborators or tactic does not exist")
+        }
 
         val collaborators = mutableListOf<CollaboratorDTO>()
 
-        val userAccess = userGameTacticAccessRepository.findByGameTacticId(tacticId)
+        // Uses JOIN FETCH to get all users in 1 query (fixes N+1)
+        val userAccess = userGameTacticAccessRepository.findAllWithUserByGameTacticId(tacticId)
             .mapNotNull { access ->
-                access.user?.let { CollaboratorDTO(it.id, it.email, CollaboratorType.USER, access.role) }
+                val user = access.user ?: return@mapNotNull null
+                CollaboratorDTO(user.id, user.email, CollaboratorType.USER, access.role)
             }
 
-        val groupAccess = groupGameTacticAccessRepository.findByGameTacticId(tacticId)
+        // Uses JOIN FETCH to get all groups in 1 query (fixes N+1)
+        val groupAccess = groupGameTacticAccessRepository.findAllWithGroupByGameTacticId(tacticId)
             .mapNotNull { access ->
-                access.group?.let { CollaboratorDTO(it.id, it.name, CollaboratorType.GROUP, access.role) }
+                val group = access.group ?: return@mapNotNull null
+                CollaboratorDTO(group.id, group.name, CollaboratorType.GROUP, access.role)
             }
 
         collaborators.addAll(userAccess)
@@ -43,55 +48,56 @@ class GameTacticSharingService(
     fun shareGameTacticWithUser(ownerId: Int, tacticId: Int, targetUserId: Int, role: AccessRole) {
         if (ownerId == targetUserId) throw IllegalArgumentException("Cannot share with yourself")
 
-        val tactic = gameTacticRepository.findById(tacticId).orElseThrow { ResourceNotFoundException("Tactic not found") }
-        if (tactic.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
-
-        val user = userRepository.findById(targetUserId).orElseThrow { ResourceNotFoundException("User not found") }
+        if (!gameTacticRepository.existsByIdAndOwnerId(tacticId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to share this tactic")
+        }
 
         val existingAccess = userGameTacticAccessRepository.findByUserIdAndGameTacticId(targetUserId, tacticId)
         if (existingAccess != null) {
             existingAccess.role = role
-            userGameTacticAccessRepository.save(existingAccess)
+            // Hibernate auto-updates managed entities on transaction commit; no .save() needed
         } else {
-            userGameTacticAccessRepository.save(UserGameTacticAccess(user = user, gameTactic = tactic, role = role))
+            // getReferenceById creates a Proxy. No SELECT queries are executed!
+            val tacticProxy = gameTacticRepository.getReferenceById(tacticId)
+            val userProxy = userRepository.getReferenceById(targetUserId)
+            userGameTacticAccessRepository.save(UserGameTacticAccess(user = userProxy, gameTactic = tacticProxy, role = role))
         }
     }
 
     @Transactional
     fun revokeGameTacticFromUser(ownerId: Int, tacticId: Int, targetUserId: Int) {
-        val tactic = gameTacticRepository.findById(tacticId).orElseThrow { ResourceNotFoundException("Tactic not found") }
-        if (tactic.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
+        if (!gameTacticRepository.existsByIdAndOwnerId(tacticId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to revoke access to this tactic")
+        }
 
-        val access = userGameTacticAccessRepository.findByUserIdAndGameTacticId(targetUserId, tacticId)
-            ?: throw ResourceNotFoundException("Access not found")
-
-        userGameTacticAccessRepository.delete(access)
+        // Single DB command: DELETE WHERE userId = ? AND tacticId = ?
+        userGameTacticAccessRepository.deleteByUserIdAndGameTacticId(targetUserId, tacticId)
     }
 
     @Transactional
     fun shareGameTacticWithGroup(ownerId: Int, tacticId: Int, groupId: Int, role: AccessRole) {
-        val tactic = gameTacticRepository.findById(tacticId).orElseThrow { ResourceNotFoundException("Tactic not found") }
-        if (tactic.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
-
-        val group = groupRepository.findById(groupId).orElseThrow { ResourceNotFoundException("Group not found") }
+        if (!gameTacticRepository.existsByIdAndOwnerId(tacticId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to share this tactic")
+        }
 
         val existingAccess = groupGameTacticAccessRepository.findByGameTacticIdAndGroupId(tacticId, groupId)
         if (existingAccess != null) {
             existingAccess.role = role
-            groupGameTacticAccessRepository.save(existingAccess)
         } else {
-            groupGameTacticAccessRepository.save(GroupGameTacticAccess(gameTactic = tactic, group = group, role = role))
+            // getReferenceById creates a Proxy. No SELECT queries are executed!
+            val tacticProxy = gameTacticRepository.getReferenceById(tacticId)
+            val groupProxy = groupRepository.getReferenceById(groupId)
+            groupGameTacticAccessRepository.save(GroupGameTacticAccess(gameTactic = tacticProxy, group = groupProxy, role = role))
         }
     }
 
     @Transactional
     fun revokeGameTacticFromGroup(ownerId: Int, tacticId: Int, groupId: Int) {
-        val tactic = gameTacticRepository.findById(tacticId).orElseThrow { ResourceNotFoundException("Tactic not found") }
-        if (tactic.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
+        if (!gameTacticRepository.existsByIdAndOwnerId(tacticId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to revoke access to this tactic")
+        }
 
-        val access = groupGameTacticAccessRepository.findByGameTacticIdAndGroupId(tacticId, groupId)
-            ?: throw ResourceNotFoundException("Access not found")
-
-        groupGameTacticAccessRepository.delete(access)
+        // Single DB command: DELETE WHERE groupId = ? AND tacticId = ?
+        groupGameTacticAccessRepository.deleteByGroupIdAndGameTacticId(groupId, tacticId)
     }
 }

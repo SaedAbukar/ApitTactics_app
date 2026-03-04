@@ -1,7 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.service
 
 import org.sportstechsolutions.apitacticsapp.dtos.CollaboratorDTO
-import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.*
@@ -19,19 +18,25 @@ class PracticeSharingService(
 
     @Transactional(readOnly = true)
     fun getPracticeCollaborators(ownerId: Int, practiceId: Int): List<CollaboratorDTO> {
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-        if (practice.owner?.id != ownerId) throw UnauthorizedException("Access denied")
+        // Fast ownership check without loading the entire Practice entity into memory
+        if (!practiceRepository.existsByIdAndOwnerId(practiceId, ownerId)) {
+            throw UnauthorizedException("Only the owner can view collaborators or practice does not exist")
+        }
 
         val collaborators = mutableListOf<CollaboratorDTO>()
 
-        val userAccess = userPracticeAccessRepository.findByPracticeId(practiceId)
+        // Uses JOIN FETCH to get all users in 1 query (fixes N+1)
+        val userAccess = userPracticeAccessRepository.findAllWithUserByPracticeId(practiceId)
             .mapNotNull { access ->
-                access.user?.let { CollaboratorDTO(it.id, it.email, CollaboratorType.USER, access.role) }
+                val user = access.user ?: return@mapNotNull null
+                CollaboratorDTO(user.id, user.email, CollaboratorType.USER, access.role)
             }
 
-        val groupAccess = groupPracticeAccessRepository.findByPracticeId(practiceId)
+        // Uses JOIN FETCH to get all groups in 1 query (fixes N+1)
+        val groupAccess = groupPracticeAccessRepository.findAllWithGroupByPracticeId(practiceId)
             .mapNotNull { access ->
-                access.group?.let { CollaboratorDTO(it.id, it.name, CollaboratorType.GROUP, access.role) }
+                val group = access.group ?: return@mapNotNull null
+                CollaboratorDTO(group.id, group.name, CollaboratorType.GROUP, access.role)
             }
 
         collaborators.addAll(userAccess)
@@ -43,55 +48,56 @@ class PracticeSharingService(
     fun sharePracticeWithUser(ownerId: Int, practiceId: Int, targetUserId: Int, role: AccessRole) {
         if (ownerId == targetUserId) throw IllegalArgumentException("Cannot share with yourself")
 
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-        if (practice.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
-
-        val user = userRepository.findById(targetUserId).orElseThrow { ResourceNotFoundException("User not found") }
+        if (!practiceRepository.existsByIdAndOwnerId(practiceId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to share this practice")
+        }
 
         val existingAccess = userPracticeAccessRepository.findByUserIdAndPracticeId(targetUserId, practiceId)
         if (existingAccess != null) {
             existingAccess.role = role
-            userPracticeAccessRepository.save(existingAccess)
+            // Hibernate auto-updates managed entities on transaction commit; no .save() needed
         } else {
-            userPracticeAccessRepository.save(UserPracticeAccess(user = user, practice = practice, role = role))
+            // getReferenceById creates a Proxy. No SELECT queries are executed!
+            val practiceProxy = practiceRepository.getReferenceById(practiceId)
+            val userProxy = userRepository.getReferenceById(targetUserId)
+            userPracticeAccessRepository.save(UserPracticeAccess(user = userProxy, practice = practiceProxy, role = role))
         }
     }
 
     @Transactional
     fun revokePracticeFromUser(ownerId: Int, practiceId: Int, targetUserId: Int) {
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-        if (practice.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
+        if (!practiceRepository.existsByIdAndOwnerId(practiceId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to revoke access to this practice")
+        }
 
-        val access = userPracticeAccessRepository.findByUserIdAndPracticeId(targetUserId, practiceId)
-            ?: throw ResourceNotFoundException("Access not found")
-
-        userPracticeAccessRepository.delete(access)
+        // Single DB command: DELETE WHERE userId = ? AND practiceId = ?
+        userPracticeAccessRepository.deleteByUserIdAndPracticeId(targetUserId, practiceId)
     }
 
     @Transactional
     fun sharePracticeWithGroup(ownerId: Int, practiceId: Int, groupId: Int, role: AccessRole) {
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-        if (practice.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
-
-        val group = groupRepository.findById(groupId).orElseThrow { ResourceNotFoundException("Group not found") }
+        if (!practiceRepository.existsByIdAndOwnerId(practiceId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to share this practice")
+        }
 
         val existingAccess = groupPracticeAccessRepository.findByPracticeIdAndGroupId(practiceId, groupId)
         if (existingAccess != null) {
             existingAccess.role = role
-            groupPracticeAccessRepository.save(existingAccess)
         } else {
-            groupPracticeAccessRepository.save(GroupPracticeAccess(practice = practice, group = group, role = role))
+            // getReferenceById creates a Proxy. No SELECT queries are executed!
+            val practiceProxy = practiceRepository.getReferenceById(practiceId)
+            val groupProxy = groupRepository.getReferenceById(groupId)
+            groupPracticeAccessRepository.save(GroupPracticeAccess(practice = practiceProxy, group = groupProxy, role = role))
         }
     }
 
     @Transactional
     fun revokePracticeFromGroup(ownerId: Int, practiceId: Int, groupId: Int) {
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-        if (practice.owner?.id != ownerId) throw UnauthorizedException("Not the owner")
+        if (!practiceRepository.existsByIdAndOwnerId(practiceId, ownerId)) {
+            throw UnauthorizedException("You do not have permission to revoke access to this practice")
+        }
 
-        val access = groupPracticeAccessRepository.findByPracticeIdAndGroupId(practiceId, groupId)
-            ?: throw ResourceNotFoundException("Access not found")
-
-        groupPracticeAccessRepository.delete(access)
+        // Single DB command: DELETE WHERE groupId = ? AND practiceId = ?
+        groupPracticeAccessRepository.deleteByGroupIdAndPracticeId(groupId, practiceId)
     }
 }

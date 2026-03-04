@@ -6,6 +6,7 @@ import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.*
+import org.sportstechsolutions.apitacticsapp.repository.specifications.SearchSpecifications
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -21,9 +22,6 @@ class SessionService(
     private val entityMappers: EntityMappers
 ) {
 
-    // ------------------------------------------------------------
-    // Tabbed view (Returns Paginated Summaries)
-    // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun getSessionsForTabs(userId: Int, pageable: Pageable): TabbedResponse<SessionSummaryResponse> {
         val personalPage = sessionRepository.findByOwnerId(userId, pageable)
@@ -36,9 +34,10 @@ class SessionService(
             isLast = personalPage.isLast
         )
 
-        val userSharedPage = userSessionAccessRepository.findByUserId(userId, pageable)
+        // DB level filter prevents pagination count mismatch
+        val userSharedPage = userSessionAccessRepository.findByUserIdAndRoleNot(userId, AccessRole.NONE, pageable)
         val userSharedPaged = PagedResponse(
-            content = userSharedPage.content.filter { it.role != AccessRole.NONE }.mapNotNull { access ->
+            content = userSharedPage.content.mapNotNull { access ->
                 access.session?.let { s -> entityMappers.toSessionSummary(s, access.role, userId) }
             },
             pageNumber = userSharedPage.number,
@@ -63,16 +62,10 @@ class SessionService(
         return TabbedResponse(personalPaged, userSharedPaged, groupSharedPaged)
     }
 
-    // ------------------------------------------------------------
-    // Advanced Search
-    // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun searchSessions(userId: Int, request: SessionSearchRequest, pageable: Pageable): PagedResponse<SessionSummaryResponse> {
-        // 1. Guest Safety: Guests have no "accessible" private IDs
-        val accessibleIds = if (userId == 0) emptySet() else sessionRepository.findAllAccessibleSessionIds(userId)
-
-        val spec = org.sportstechsolutions.apitacticsapp.repository.specifications.SearchSpecifications
-            .buildSessionSearchSpec(request, accessibleIds, userId)
+        // Build Spec: accessibleIds memory array replaced with DB Exists logic
+        val spec = SearchSpecifications.buildSessionSearchSpec(request, userId)
 
         val finalPageable = if (request.sortBy == SortBy.VIEWS) {
             PageRequest.of(pageable.pageNumber, pageable.pageSize, Sort.by(Sort.Direction.DESC, "viewCount"))
@@ -81,10 +74,28 @@ class SessionService(
         }
 
         val sessionPage = sessionRepository.findAll(spec, finalPageable)
+        val sessionIds = sessionPage.content.mapNotNull { it.id }
+
+        // Bulk fetch roles to prevent N+1 queries during DTO mapping
+        val userRoleMap = if (userId != 0 && sessionIds.isNotEmpty()) {
+            userSessionAccessRepository.findRolesForUserInSessions(userId, sessionIds).associate { it.sessionId to it.role }
+        } else emptyMap()
+
+        val groupRoleMap = if (userId != 0 && sessionIds.isNotEmpty()) {
+            groupSessionAccessRepository.findRolesForUserInSessions(userId, sessionIds).associate { it.sessionId to it.role }
+        } else emptyMap()
 
         val content = sessionPage.content.map { session ->
-            // 2. Role Resolution: Guests are always VIEWERS
-            val role = if (userId == 0) AccessRole.VIEWER else getUserRoleForSession(userId, session.id ?: 0)
+            val sessionId = session.id ?: 0
+
+            val role = when {
+                userId == 0 -> AccessRole.VIEWER
+                session.owner?.id == userId -> AccessRole.OWNER
+                userRoleMap.containsKey(sessionId) -> userRoleMap[sessionId]!!
+                groupRoleMap.containsKey(sessionId) -> groupRoleMap[sessionId]!!
+                session.isPublic || session.isPremade -> AccessRole.VIEWER
+                else -> AccessRole.NONE
+            }
             entityMappers.toSessionSummary(session, role, userId)
         }
 
@@ -98,17 +109,11 @@ class SessionService(
         )
     }
 
-    // ------------------------------------------------------------
-    // CRUD Operations
-    // ------------------------------------------------------------
     @Transactional
     fun createSession(userId: Int, request: SessionRequest): SessionResponse {
         val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
-
-        // entityMappers.toSession already handles the isPublic flag
         val session = entityMappers.toSession(request, user)
         val saved = sessionRepository.save(session)
-
         return entityMappers.loadFullSession(saved, AccessRole.OWNER, userId)
     }
 
@@ -116,24 +121,16 @@ class SessionService(
     fun updateSession(userId: Int, sessionId: Int, request: SessionRequest, groupId: Int? = null): SessionResponse {
         val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
 
-        val role = if (session.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForSession(userId, sessionId, groupId)
-
+        val role = getUserRoleForSession(userId, session, groupId)
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this session")
-
-        if (request.name.isNullOrBlank()) {
-            throw IllegalArgumentException("Session name is required for updates")
-        }
+        if (request.name.isNullOrBlank()) throw IllegalArgumentException("Session name is required for updates")
 
         val owner = session.owner ?: throw IllegalStateException("Session must have an owner")
 
-        // Update basic fields
         session.name = request.name
         session.description = request.description ?: ""
         session.isPremade = request.isPremade
-        session.isPublic = request.isPublic // Added visibility update logic
-
-        // Taxonomy
+        session.isPublic = request.isPublic
         session.phaseOfPlay = request.phaseOfPlay
         session.ballContext = request.ballContext
         session.drillFormat = request.drillFormat
@@ -143,14 +140,12 @@ class SessionService(
         session.areaSize = request.areaSize
         session.targetAgeLevel = request.targetAgeLevel
 
-        // Collections
         session.tacticalActions.clear()
         session.tacticalActions.addAll(request.tacticalActions)
 
         session.qualityMakers.clear()
         session.qualityMakers.addAll(request.qualityMakers)
 
-        // Steps (Canvas elements)
         session.steps.clear()
         session.steps.addAll(request.steps.map { entityMappers.toStep(it, session, owner) })
 
@@ -162,18 +157,12 @@ class SessionService(
     fun deleteSession(userId: Int, sessionId: Int, groupId: Int? = null) {
         val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
 
-        val role = if (session.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForSession(userId, sessionId, groupId)
-
+        val role = getUserRoleForSession(userId, session, groupId)
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this session")
 
-        // >>> BUSINESS RULE ENFORCEMENT <<<
-        // We check bidirectional links. If these lists aren't empty, someone else is using this drill.
         if (session.practices.isNotEmpty() || session.gameTactics.isNotEmpty()) {
-            val pCount = session.practices.size
-            val gCount = session.gameTactics.size
             throw ConflictException(
-                "Cannot delete session: It is currently used in $pCount Practice(s) and $gCount Game Tactic(s). " +
+                "Cannot delete session: It is currently used in ${session.practices.size} Practice(s) and ${session.gameTactics.size} Game Tactic(s). " +
                         "Remove it from these containers first to maintain data integrity."
             )
         }
@@ -186,64 +175,46 @@ class SessionService(
     fun getSessionById(sessionId: Int, userId: Int, groupId: Int? = null): SessionResponse {
         val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
 
-        val role = if (session.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForSession(userId, sessionId, groupId)
-
+        val role = getUserRoleForSession(userId, session, groupId)
         if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this session")
 
-        // Increment View Count for engagement analytics
         session.viewCount += 1
         sessionRepository.save(session)
 
         return entityMappers.loadFullSession(session, role, userId)
     }
 
-    // ------------------------------------------------------------
-    // Favorites & Accessibility
-    // ------------------------------------------------------------
     @Transactional
     fun toggleFavorite(userId: Int, sessionId: Int): Boolean {
-        val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
-        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
-
-        val role = if (session.owner?.id == userId) AccessRole.OWNER else getUserRoleForSession(userId, sessionId)
+        val role = getUserRoleForSession(userId, sessionId)
         if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this session")
 
-        val isAlreadyFavorite = session.favoritedByUsers.any { it.id == userId }
+        val isAlreadyFavorite = sessionRepository.isSessionFavoritedByUser(sessionId, userId)
         if (isAlreadyFavorite) {
-            session.favoritedByUsers.removeIf { it.id == userId }
+            sessionRepository.removeFavorite(sessionId, userId)
         } else {
-            session.favoritedByUsers.add(user)
+            sessionRepository.addFavorite(sessionId, userId)
         }
-
-        sessionRepository.save(session)
         return !isAlreadyFavorite
     }
 
-    // ------------------------------------------------------------
-    // Access role resolver
-    // ------------------------------------------------------------
-    fun getUserRoleForSession(userId: Int, sessionId: Int, groupId: Int? = null): AccessRole {
-        val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
-
-        // 1. Owner Check
+    // Main resolver: operates on the entity to prevent double fetching
+    fun getUserRoleForSession(userId: Int, session: Session, groupId: Int? = null): AccessRole {
+        val sessionId = session.id ?: return AccessRole.NONE
         if (session.owner?.id == userId) return AccessRole.OWNER
 
-        // 2. Direct User Share Check
         val userAccess = userSessionAccessRepository.findByUserIdAndSessionId(userId, sessionId)
         if (userAccess != null) return userAccess.role
 
-        // 3. Group Share Check
-        val groupAccess = if (groupId != null) {
-            groupSessionAccessRepository.findBySessionIdAndGroupId(sessionId, groupId)
-                ?.takeIf { it.group?.members?.any { m -> m.id == userId } == true }
-        } else {
-            groupSessionAccessRepository.findBySessionId(sessionId)
-                .firstOrNull { it.group?.members?.any { m -> m.id == userId } == true }
-        }
-        if (groupAccess != null) return groupAccess.role
+        val groupRole = groupSessionAccessRepository.findRoleForUserInSession(userId, sessionId)
+        if (groupRole != null) return groupRole
 
-        // 4. Global Visibility Check (Public/Premade)
         return if (session.isPublic || session.isPremade) AccessRole.VIEWER else AccessRole.NONE
+    }
+
+    // Fallback resolver
+    fun getUserRoleForSession(userId: Int, sessionId: Int, groupId: Int? = null): AccessRole {
+        val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
+        return getUserRoleForSession(userId, session, groupId)
     }
 }

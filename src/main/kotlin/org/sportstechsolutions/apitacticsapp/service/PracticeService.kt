@@ -5,6 +5,7 @@ import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.*
+import org.sportstechsolutions.apitacticsapp.repository.specifications.SearchSpecifications
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -21,9 +22,6 @@ class PracticeService(
     private val entityMappers: EntityMappers,
 ) {
 
-    // ------------------------------------------------------------
-    // Tabbed view (Returns Paginated Summaries)
-    // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun getPracticesForTabs(userId: Int, pageable: Pageable): TabbedResponse<PracticeSummaryResponse> {
         val personalPage = practiceRepository.findByOwnerId(userId, pageable)
@@ -36,9 +34,10 @@ class PracticeService(
             isLast = personalPage.isLast
         )
 
-        val userSharedPage = userPracticeAccessRepository.findByUserId(userId, pageable)
+        // DB level filter prevents pagination count mismatch
+        val userSharedPage = userPracticeAccessRepository.findByUserIdAndRoleNot(userId, AccessRole.NONE, pageable)
         val userSharedPaged = PagedResponse(
-            content = userSharedPage.content.filter { it.role != AccessRole.NONE }.mapNotNull { access ->
+            content = userSharedPage.content.mapNotNull { access ->
                 access.practice?.let { p -> entityMappers.toPracticeSummary(p, access.role, userId) }
             },
             pageNumber = userSharedPage.number,
@@ -63,18 +62,10 @@ class PracticeService(
         return TabbedResponse(personalPaged, userSharedPaged, groupSharedPaged)
     }
 
-    // ------------------------------------------------------------
-    // Advanced Search
-    // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun searchPractices(userId: Int, request: PracticeSearchRequest, pageable: Pageable): PagedResponse<PracticeSummaryResponse> {
-        val accessibleIds: Set<Int> = if (userId == 0) {
-            emptySet()
-        } else {
-            practiceRepository.findAllAccessiblePracticeIds(userId).toSet()
-        }
-
-        val spec = org.sportstechsolutions.apitacticsapp.repository.specifications.SearchSpecifications.buildPracticeSearchSpec(request, accessibleIds, userId)
+        // Build Spec using DB-level EXISTS subqueries, removing the in-memory array
+        val spec = SearchSpecifications.buildPracticeSearchSpec(request, userId)
 
         val finalPageable = if (request.sortBy == SortBy.VIEWS) {
             PageRequest.of(pageable.pageNumber, pageable.pageSize, Sort.by(Sort.Direction.DESC, "viewCount"))
@@ -83,8 +74,28 @@ class PracticeService(
         }
 
         val practicePage = practiceRepository.findAll(spec, finalPageable)
+        val practiceIds = practicePage.content.mapNotNull { it.id }
+
+        // Bulk fetch roles to prevent N+1 queries during DTO mapping
+        val userRoleMap = if (userId != 0 && practiceIds.isNotEmpty()) {
+            userPracticeAccessRepository.findRolesForUserInPractices(userId, practiceIds).associate { it.practiceId to it.role }
+        } else emptyMap()
+
+        val groupRoleMap = if (userId != 0 && practiceIds.isNotEmpty()) {
+            groupPracticeAccessRepository.findRolesForUserInPractices(userId, practiceIds).associate { it.practiceId to it.role }
+        } else emptyMap()
+
         val content = practicePage.content.map { practice ->
-            val role = getUserRoleForPractice(userId, practice.id ?: 0)
+            val practiceId = practice.id ?: 0
+
+            val role = when {
+                userId == 0 -> AccessRole.VIEWER
+                practice.owner?.id == userId -> AccessRole.OWNER
+                userRoleMap.containsKey(practiceId) -> userRoleMap[practiceId]!!
+                groupRoleMap.containsKey(practiceId) -> groupRoleMap[practiceId]!!
+                practice.isPublic || practice.isPremade -> AccessRole.VIEWER
+                else -> AccessRole.NONE
+            }
             entityMappers.toPracticeSummary(practice, role, userId)
         }
 
@@ -98,9 +109,6 @@ class PracticeService(
         )
     }
 
-    // ------------------------------------------------------------
-    // CRUD Operations
-    // ------------------------------------------------------------
     @Transactional
     fun createPractice(userId: Int, request: PracticeRequest): PracticeResponse {
         val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
@@ -123,17 +131,13 @@ class PracticeService(
             qualityMakers = request.qualityMakers.toMutableSet()
         )
 
-        // FIXED: Strictly link existing sessions by ID to prevent DTO instantiation errors
         val sessionsToAttach = request.sessions.map { dto ->
             val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
             sessionRepository.findById(sessionId)
                 .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // BIDIRECTIONAL SYNC
-        sessionsToAttach.forEach { session ->
-            session.practices.add(practice)
-        }
+        sessionsToAttach.forEach { session -> session.practices.add(practice) }
         practice.sessions.addAll(sessionsToAttach)
 
         val saved = practiceRepository.save(practice)
@@ -145,8 +149,8 @@ class PracticeService(
         val practice = practiceRepository.findById(practiceId)
             .orElseThrow { ResourceNotFoundException("Practice not found") }
 
-        val role = if (practice.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForPractice(userId, practiceId, groupId)
+        // Prevent redundant database fetch
+        val role = getUserRoleForPractice(userId, practice, groupId)
 
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this practice")
 
@@ -169,23 +173,16 @@ class PracticeService(
         practice.qualityMakers.clear()
         practice.qualityMakers.addAll(request.qualityMakers)
 
-        // SYNC: Detach old sessions
-        practice.sessions.forEach { session ->
-            session.practices.remove(practice)
-        }
+        practice.sessions.forEach { session -> session.practices.remove(practice) }
         practice.sessions.clear()
 
-        // FIXED: Use IDs only for attachment
         val sessionsToAttach = request.sessions.map { dto ->
             val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
             sessionRepository.findById(sessionId)
                 .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // SYNC: Re-attach new sessions
-        sessionsToAttach.forEach { session ->
-            session.practices.add(practice)
-        }
+        sessionsToAttach.forEach { session -> session.practices.add(practice) }
         practice.sessions.addAll(sessionsToAttach)
 
         val updated = practiceRepository.save(practice)
@@ -197,14 +194,11 @@ class PracticeService(
         val practice = practiceRepository.findById(practiceId)
             .orElseThrow { ResourceNotFoundException("Practice not found") }
 
-        val role = if (practice.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForPractice(userId, practiceId, groupId)
+        val role = getUserRoleForPractice(userId, practice, groupId)
 
-        if (!role.canEdit()) throw UnauthorizedException("Permission denied")
+        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this practice")
 
-        practice.sessions.forEach { session ->
-            session.practices.remove(practice)
-        }
+        practice.sessions.forEach { session -> session.practices.remove(practice) }
 
         userPracticeAccessRepository.deleteAllByPractice(practice)
         practiceRepository.delete(practice)
@@ -215,10 +209,9 @@ class PracticeService(
         val practice = practiceRepository.findById(practiceId)
             .orElseThrow { ResourceNotFoundException("Practice not found") }
 
-        val role = if (practice.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForPractice(userId, practiceId, groupId)
+        val role = getUserRoleForPractice(userId, practice, groupId)
 
-        if (role == AccessRole.NONE) throw UnauthorizedException("Access denied")
+        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
 
         practice.viewCount += 1
         practiceRepository.save(practice)
@@ -228,40 +221,35 @@ class PracticeService(
 
     @Transactional
     fun toggleFavorite(userId: Int, practiceId: Int): Boolean {
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        val role = getUserRoleForPractice(userId, practiceId)
+        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
 
-        val role = if (practice.owner?.id == userId) AccessRole.OWNER else getUserRoleForPractice(userId, practiceId)
-        if (role == AccessRole.NONE) throw UnauthorizedException("Access denied")
-
-        val isAlreadyFavorite = practice.favoritedByUsers.any { it.id == userId }
+        val isAlreadyFavorite = practiceRepository.isPracticeFavoritedByUser(practiceId, userId)
         if (isAlreadyFavorite) {
-            practice.favoritedByUsers.removeIf { it.id == userId }
+            practiceRepository.removeFavorite(practiceId, userId)
         } else {
-            practice.favoritedByUsers.add(user)
+            practiceRepository.addFavorite(practiceId, userId)
         }
-
-        practiceRepository.save(practice)
         return !isAlreadyFavorite
     }
 
-    fun getUserRoleForPractice(userId: Int, practiceId: Int, groupId: Int? = null): AccessRole {
-        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
-
+    // Main resolver: operates on the entity to prevent double fetching
+    fun getUserRoleForPractice(userId: Int, practice: Practice, groupId: Int? = null): AccessRole {
+        val practiceId = practice.id ?: return AccessRole.NONE
         if (practice.owner?.id == userId) return AccessRole.OWNER
 
         val userAccess = userPracticeAccessRepository.findByUserIdAndPracticeId(userId, practiceId)
         if (userAccess != null) return userAccess.role
 
-        val groupAccess = if (groupId != null) {
-            groupPracticeAccessRepository.findByPracticeIdAndGroupId(practiceId, groupId)
-                ?.takeIf { it.group?.members?.any { m -> m.id == userId } == true }
-        } else {
-            groupPracticeAccessRepository.findByPracticeId(practiceId)
-                .firstOrNull { it.group?.members?.any { m -> m.id == userId } == true }
-        }
-        if (groupAccess != null) return groupAccess.role
+        val groupRole = groupPracticeAccessRepository.findRoleForUserInPractice(userId, practiceId)
+        if (groupRole != null) return groupRole
 
         return if (practice.isPublic || practice.isPremade) AccessRole.VIEWER else AccessRole.NONE
+    }
+
+    // Fallback resolver
+    fun getUserRoleForPractice(userId: Int, practiceId: Int, groupId: Int? = null): AccessRole {
+        val practice = practiceRepository.findById(practiceId).orElseThrow { ResourceNotFoundException("Practice not found") }
+        return getUserRoleForPractice(userId, practice, groupId)
     }
 }

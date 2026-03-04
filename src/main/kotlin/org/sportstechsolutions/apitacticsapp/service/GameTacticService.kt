@@ -5,6 +5,7 @@ import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.model.*
 import org.sportstechsolutions.apitacticsapp.repository.*
+import org.sportstechsolutions.apitacticsapp.repository.specifications.SearchSpecifications
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -21,9 +22,6 @@ class GameTacticService(
     private val entityMappers: EntityMappers,
 ) {
 
-    // ------------------------------------------------------------
-    // Tabbed view (Returns Paginated Summaries)
-    // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun getGameTacticsForTabs(userId: Int, pageable: Pageable): TabbedResponse<GameTacticSummaryResponse> {
         val personalPage = gameTacticRepository.findByOwnerId(userId, pageable)
@@ -36,9 +34,10 @@ class GameTacticService(
             isLast = personalPage.isLast
         )
 
-        val userSharedPage = userGameTacticAccessRepository.findByUserId(userId, pageable)
+        // DB level filter prevents pagination count mismatch
+        val userSharedPage = userGameTacticAccessRepository.findByUserIdAndRoleNot(userId, AccessRole.NONE, pageable)
         val userSharedPaged = PagedResponse(
-            content = userSharedPage.content.filter { it.role != AccessRole.NONE }.mapNotNull { access ->
+            content = userSharedPage.content.mapNotNull { access ->
                 access.gameTactic?.let { tactic -> entityMappers.toGameTacticSummary(tactic, access.role, userId) }
             },
             pageNumber = userSharedPage.number,
@@ -63,18 +62,10 @@ class GameTacticService(
         return TabbedResponse(personalPaged, userSharedPaged, groupSharedPaged)
     }
 
-    // ------------------------------------------------------------
-    // Advanced Search
-    // ------------------------------------------------------------
     @Transactional(readOnly = true)
     fun searchGameTactics(userId: Int, request: GameTacticSearchRequest, pageable: Pageable): PagedResponse<GameTacticSummaryResponse> {
-        val accessibleIds: Set<Int> = if (userId == 0) {
-            emptySet()
-        } else {
-            gameTacticRepository.findAllAccessibleGameTacticIds(userId).toSet()
-        }
-
-        val spec = org.sportstechsolutions.apitacticsapp.repository.specifications.SearchSpecifications.buildGameTacticSearchSpec(request, accessibleIds, userId)
+        // Build Spec using DB-level EXISTS subqueries, removing the in-memory array
+        val spec = SearchSpecifications.buildGameTacticSearchSpec(request, userId)
 
         val finalPageable = if (request.sortBy == SortBy.VIEWS) {
             PageRequest.of(pageable.pageNumber, pageable.pageSize, Sort.by(Sort.Direction.DESC, "viewCount"))
@@ -83,8 +74,28 @@ class GameTacticService(
         }
 
         val tacticPage = gameTacticRepository.findAll(spec, finalPageable)
+        val tacticIds = tacticPage.content.mapNotNull { it.id }
+
+        // Bulk fetch roles to prevent N+1 queries during DTO mapping
+        val userRoleMap = if (userId != 0 && tacticIds.isNotEmpty()) {
+            userGameTacticAccessRepository.findRolesForUserInGameTactics(userId, tacticIds).associate { it.gameTacticId to it.role }
+        } else emptyMap()
+
+        val groupRoleMap = if (userId != 0 && tacticIds.isNotEmpty()) {
+            groupGameTacticAccessRepository.findRolesForUserInGameTactics(userId, tacticIds).associate { it.gameTacticId to it.role }
+        } else emptyMap()
+
         val content = tacticPage.content.map { tactic ->
-            val role = getUserRoleForGameTactic(userId, tactic.id ?: 0)
+            val tacticId = tactic.id ?: 0
+
+            val role = when {
+                userId == 0 -> AccessRole.VIEWER
+                tactic.owner?.id == userId -> AccessRole.OWNER
+                userRoleMap.containsKey(tacticId) -> userRoleMap[tacticId]!!
+                groupRoleMap.containsKey(tacticId) -> groupRoleMap[tacticId]!!
+                tactic.isPublic || tactic.isPremade -> AccessRole.VIEWER
+                else -> AccessRole.NONE
+            }
             entityMappers.toGameTacticSummary(tactic, role, userId)
         }
 
@@ -98,9 +109,6 @@ class GameTacticService(
         )
     }
 
-    // ------------------------------------------------------------
-    // CRUD Operations
-    // ------------------------------------------------------------
     @Transactional
     fun createGameTactic(userId: Int, request: GameTacticRequest): GameTacticResponse {
         val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
@@ -113,17 +121,13 @@ class GameTacticService(
             owner = user
         )
 
-        // FIXED: Strictly link existing sessions by ID to avoid JSON parse errors
         val sessionsToAttach = request.sessions.map { dto ->
             val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
             sessionRepository.findById(sessionId)
                 .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // BIDIRECTIONAL SYNC: Ensure Sessions know they belong to this Tactic
-        sessionsToAttach.forEach { session ->
-            session.gameTactics.add(gameTactic)
-        }
+        sessionsToAttach.forEach { session -> session.gameTactics.add(gameTactic) }
         gameTactic.sessions.addAll(sessionsToAttach)
 
         val saved = gameTacticRepository.save(gameTactic)
@@ -135,8 +139,8 @@ class GameTacticService(
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
+        // Prevent redundant database fetch
+        val role = getUserRoleForGameTactic(userId, gameTactic, groupId)
 
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this game tactic")
 
@@ -145,23 +149,16 @@ class GameTacticService(
         gameTactic.isPremade = request.isPremade
         gameTactic.isPublic = request.isPublic
 
-        // DETACH OLD SESSIONS FROM BOTH SIDES
-        gameTactic.sessions.forEach { session ->
-            session.gameTactics.remove(gameTactic)
-        }
+        gameTactic.sessions.forEach { session -> session.gameTactics.remove(gameTactic) }
         gameTactic.sessions.clear()
 
-        // FIXED: Use IDs only for attachment to prevent Constructor NPE
         val sessionsToAttach = request.sessions.map { dto ->
             val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
             sessionRepository.findById(sessionId)
                 .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
         }
 
-        // SYNC: Re-attach new sessions to both sides
-        sessionsToAttach.forEach { session ->
-            session.gameTactics.add(gameTactic)
-        }
+        sessionsToAttach.forEach { session -> session.gameTactics.add(gameTactic) }
         gameTactic.sessions.addAll(sessionsToAttach)
 
         val updated = gameTacticRepository.save(gameTactic)
@@ -173,12 +170,10 @@ class GameTacticService(
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
+        val role = getUserRoleForGameTactic(userId, gameTactic, groupId)
 
         if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this game tactic")
 
-        // Cleanup: Remove the Tactic from the Sessions' internal lists
         gameTactic.sessions.forEach { it.gameTactics.remove(gameTactic) }
 
         userGameTacticAccessRepository.deleteAllByGameTactic(gameTactic)
@@ -190,8 +185,7 @@ class GameTacticService(
         val gameTactic = gameTacticRepository.findById(gameTacticId)
             .orElseThrow { ResourceNotFoundException("Game tactic not found") }
 
-        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER
-        else getUserRoleForGameTactic(userId, gameTacticId, groupId)
+        val role = getUserRoleForGameTactic(userId, gameTactic, groupId)
 
         if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this game tactic")
 
@@ -201,45 +195,37 @@ class GameTacticService(
         return entityMappers.loadFullGameTactic(gameTactic, role, userId)
     }
 
-    // ------------------------------------------------------------
-    // Favorites & Accessibility
-    // ------------------------------------------------------------
     @Transactional
     fun toggleFavorite(userId: Int, gameTacticId: Int): Boolean {
-        val gameTactic = gameTacticRepository.findById(gameTacticId).orElseThrow { ResourceNotFoundException("Game Tactic not found") }
-        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
-
-        val role = if (gameTactic.owner?.id == userId) AccessRole.OWNER else getUserRoleForGameTactic(userId, gameTacticId)
+        val role = getUserRoleForGameTactic(userId, gameTacticId)
         if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this game tactic")
 
-        val isAlreadyFavorite = gameTactic.favoritedByUsers.any { it.id == userId }
+        val isAlreadyFavorite = gameTacticRepository.isGameTacticFavoritedByUser(gameTacticId, userId)
         if (isAlreadyFavorite) {
-            gameTactic.favoritedByUsers.removeIf { it.id == userId }
+            gameTacticRepository.removeFavorite(gameTacticId, userId)
         } else {
-            gameTactic.favoritedByUsers.add(user)
+            gameTacticRepository.addFavorite(gameTacticId, userId)
         }
-
-        gameTacticRepository.save(gameTactic)
         return !isAlreadyFavorite
     }
 
-    fun getUserRoleForGameTactic(userId: Int, gameTacticId: Int, groupId: Int? = null): AccessRole {
-        val gameTactic = gameTacticRepository.findById(gameTacticId).orElseThrow { ResourceNotFoundException("Game tactic not found") }
-
+    // Main resolver: operates on the entity to prevent double fetching
+    fun getUserRoleForGameTactic(userId: Int, gameTactic: GameTactic, groupId: Int? = null): AccessRole {
+        val tacticId = gameTactic.id ?: return AccessRole.NONE
         if (gameTactic.owner?.id == userId) return AccessRole.OWNER
 
-        val userAccess = userGameTacticAccessRepository.findByUserIdAndGameTacticId(userId, gameTacticId)
+        val userAccess = userGameTacticAccessRepository.findByUserIdAndGameTacticId(userId, tacticId)
         if (userAccess != null) return userAccess.role
 
-        val groupAccess = if (groupId != null) {
-            groupGameTacticAccessRepository.findByGameTacticIdAndGroupId(gameTacticId, groupId)
-                ?.takeIf { it.group?.members?.any { m -> m.id == userId } == true }
-        } else {
-            groupGameTacticAccessRepository.findByGameTacticId(gameTacticId)
-                .firstOrNull { it.group?.members?.any { m -> m.id == userId } == true }
-        }
-        if (groupAccess != null) return groupAccess.role
+        val groupRole = groupGameTacticAccessRepository.findRoleForUserInGameTactic(userId, tacticId)
+        if (groupRole != null) return groupRole
 
         return if (gameTactic.isPublic || gameTactic.isPremade) AccessRole.VIEWER else AccessRole.NONE
+    }
+
+    // Fallback resolver
+    fun getUserRoleForGameTactic(userId: Int, gameTacticId: Int, groupId: Int? = null): AccessRole {
+        val gameTactic = gameTacticRepository.findById(gameTacticId).orElseThrow { ResourceNotFoundException("Game tactic not found") }
+        return getUserRoleForGameTactic(userId, gameTactic, groupId)
     }
 }
