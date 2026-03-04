@@ -2,13 +2,13 @@ package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
 import org.sportstechsolutions.apitacticsapp.dtos.*
+import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
 import org.sportstechsolutions.apitacticsapp.security.AuthService
 import org.sportstechsolutions.apitacticsapp.security.SecurityUtils
 import org.sportstechsolutions.apitacticsapp.service.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.server.ResponseStatusException
 
 @RestController
 @RequestMapping("/auth")
@@ -54,13 +54,14 @@ class AuthController(
     // ---------------- CURRENT USER ----------------
     @GetMapping("/me")
     fun me(): ResponseEntity<UserResponse> {
-        // 1. Get userId safely. If null (Guest), return 401 Unauthorized
+        // 1. Standardized Unauthorized check
         val userId = SecurityUtils.getCurrentUserId()
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated")
+            ?: throw UnauthorizedException("Not authenticated")
 
-        // 2. Fetch the user using the non-null ID
+        // 2. Fetch the user.
+        // Note: The null check and ResponseStatusException were removed because
+        // the refactored UserService now safely throws ResourceNotFoundException automatically!
         val user = userService.getUserWithGroupsById(userId)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "User not found")
 
         return ResponseEntity.ok(UserResponse.from(user))
     }

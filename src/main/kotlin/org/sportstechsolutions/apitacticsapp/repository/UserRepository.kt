@@ -10,8 +10,8 @@ import org.springframework.data.jpa.repository.Query
 
 interface UserRepository : JpaRepository<User, Int> {
     fun findByEmail(email: String): User?
-    fun existsByEmail(email: String): Boolean
 
+    fun existsByEmail(email: String): Boolean
 
     fun findByEmailStartingWithIgnoreCaseAndIsPublicTrueAndIdNot(
         query: String,
@@ -19,10 +19,11 @@ interface UserRepository : JpaRepository<User, Int> {
         pageable: Pageable
     ): Slice<User>
 
-
-    @Modifying
+    // Added the cache-clearing flags so it safely synchronizes with memory!
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE User u SET u.isPublic = :isPublic WHERE u.id = :id")
     fun updatePublicStatus(id: Int, isPublic: Boolean)
+
     @EntityGraph(attributePaths = ["groups"])
     fun findWithGroupsById(id: Int): User?
 }
