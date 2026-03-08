@@ -3,17 +3,36 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml" />
 
-    <property name="CONSOLE_LOG_PATTERN" value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr([TraceID: %X{traceId:-SYSTEM} | User: %X{userId:-SYSTEM}]){yellow} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"/>
+    <springProfile name="dev">
+        <property name="DEV_LOG_PATTERN" value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr([TraceID: %X{traceId:-SYSTEM} | User: %X{userId:-SYSTEM}]){yellow} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"/>
 
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
-        </encoder>
-    </appender>
+        <appender name="CONSOLE_DEV" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${DEV_LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-    </root>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_DEV" />
+        </root>
 
-    <logger name="org.hibernate.SQL" level="INFO" />
+        <logger name="org.hibernate.SQL" level="INFO" />
+    </springProfile>
+
+    <springProfile name="prod">
+        <property name="PROD_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} [TraceID: %X{traceId:-SYSTEM} | User: %X{userId:-SYSTEM}] --- [%15.15t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"/>
+
+        <appender name="CONSOLE_PROD" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${PROD_LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="WARN">
+            <appender-ref ref="CONSOLE_PROD" />
+        </root>
+
+        <logger name="org.sportstechsolutions.apitacticsapp" level="INFO" />
+    </springProfile>
+
 </configuration>
