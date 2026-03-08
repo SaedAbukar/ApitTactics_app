@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.service
 
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.exception.ConflictException
 import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
@@ -22,8 +23,12 @@ class SessionService(
     private val entityMappers: EntityMappers
 ) {
 
+    private val log = LoggerFactory.getLogger(SessionService::class.java)
+
     @Transactional(readOnly = true)
     fun getSessionsForTabs(userId: Int, pageable: Pageable): TabbedResponse<SessionSummaryResponse> {
+        log.debug("Fetching tabbed sessions for User ID: $userId")
+
         val personalPage = sessionRepository.findByOwnerId(userId, pageable)
         val personalPaged = PagedResponse(
             content = personalPage.content.map { entityMappers.toSessionSummary(it, AccessRole.OWNER, userId) },
@@ -59,11 +64,14 @@ class SessionService(
             isLast = groupSharedPage.isLast
         )
 
+        log.debug("Successfully loaded tabbed sessions for User ID: $userId")
         return TabbedResponse(personalPaged, userSharedPaged, groupSharedPaged)
     }
 
     @Transactional(readOnly = true)
     fun searchSessions(userId: Int, request: SessionSearchRequest, pageable: Pageable): PagedResponse<SessionSummaryResponse> {
+        log.debug("Executing session search for User ID: $userId with SortBy: ${request.sortBy}")
+
         // Build Spec: accessibleIds memory array replaced with DB Exists logic
         val spec = SearchSpecifications.buildSessionSearchSpec(request, userId)
 
@@ -99,6 +107,7 @@ class SessionService(
             entityMappers.toSessionSummary(session, role, userId)
         }
 
+        log.debug("Session search completed. Found ${sessionPage.totalElements} total elements.")
         return PagedResponse(
             content = content,
             pageNumber = sessionPage.number,
@@ -111,19 +120,39 @@ class SessionService(
 
     @Transactional
     fun createSession(userId: Int, request: SessionRequest): SessionResponse {
-        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        log.info("Attempting to create a new session for User ID: $userId")
+
+        val user = userRepository.findById(userId).orElseThrow {
+            log.error("Create session failed: User ID $userId not found in database.")
+            ResourceNotFoundException("User not found")
+        }
+
         val session = entityMappers.toSession(request, user)
         val saved = sessionRepository.save(session)
+
+        log.info("Successfully created Session ID: ${saved.id} for User ID: $userId")
         return entityMappers.loadFullSession(saved, AccessRole.OWNER, userId)
     }
 
     @Transactional
     fun updateSession(userId: Int, sessionId: Int, request: SessionRequest, groupId: Int? = null): SessionResponse {
-        val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
+        log.info("Attempting to update Session ID: $sessionId for User ID: $userId")
+
+        val session = sessionRepository.findById(sessionId).orElseThrow {
+            log.warn("Update failed: Session ID $sessionId not found.")
+            ResourceNotFoundException("Session not found")
+        }
 
         val role = getUserRoleForSession(userId, session, groupId)
-        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this session")
-        if (request.name.isNullOrBlank()) throw IllegalArgumentException("Session name is required for updates")
+        if (!role.canEdit()) {
+            log.warn("Update rejected: User ID $userId lacks edit permission (Role: $role) for Session ID: $sessionId")
+            throw UnauthorizedException("You do not have permission to edit this session")
+        }
+
+        if (request.name.isNullOrBlank()) {
+            log.warn("Update rejected: Session name was missing in the request.")
+            throw IllegalArgumentException("Session name is required for updates")
+        }
 
         val owner = session.owner ?: throw IllegalStateException("Session must have an owner")
 
@@ -150,17 +179,27 @@ class SessionService(
         session.steps.addAll(request.steps.map { entityMappers.toStep(it, session, owner) })
 
         val updated = sessionRepository.save(session)
+        log.info("Successfully updated Session ID: $sessionId")
         return entityMappers.loadFullSession(updated, role, userId)
     }
 
     @Transactional
     fun deleteSession(userId: Int, sessionId: Int, groupId: Int? = null) {
-        val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
+        log.info("Attempting to delete Session ID: $sessionId for User ID: $userId")
+
+        val session = sessionRepository.findById(sessionId).orElseThrow {
+            log.warn("Delete failed: Session ID $sessionId not found.")
+            ResourceNotFoundException("Session not found")
+        }
 
         val role = getUserRoleForSession(userId, session, groupId)
-        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this session")
+        if (!role.canEdit()) {
+            log.warn("Delete rejected: User ID $userId lacks edit permission (Role: $role) for Session ID: $sessionId")
+            throw UnauthorizedException("You do not have permission to delete this session")
+        }
 
         if (session.practices.isNotEmpty() || session.gameTactics.isNotEmpty()) {
+            log.warn("Delete rejected: Session ID $sessionId is currently used in ${session.practices.size} practices and ${session.gameTactics.size} game tactics.")
             throw ConflictException(
                 "Cannot delete session: It is currently used in ${session.practices.size} Practice(s) and ${session.gameTactics.size} Game Tactic(s). " +
                         "Remove it from these containers first to maintain data integrity."
@@ -169,31 +208,48 @@ class SessionService(
 
         userSessionAccessRepository.deleteAllBySession(session)
         sessionRepository.delete(session)
+        log.info("Successfully deleted Session ID: $sessionId")
     }
 
     @Transactional
     fun getSessionById(sessionId: Int, userId: Int, groupId: Int? = null): SessionResponse {
-        val session = sessionRepository.findById(sessionId).orElseThrow { ResourceNotFoundException("Session not found") }
+        log.debug("Fetching Session ID: $sessionId for User ID: $userId")
+
+        val session = sessionRepository.findById(sessionId).orElseThrow {
+            log.warn("Fetch failed: Session ID $sessionId not found.")
+            ResourceNotFoundException("Session not found")
+        }
 
         val role = getUserRoleForSession(userId, session, groupId)
-        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this session")
+        if (role == AccessRole.NONE) {
+            log.warn("Access denied: User ID $userId attempted to view private Session ID: $sessionId")
+            throw UnauthorizedException("You do not have access to this session")
+        }
 
         session.viewCount += 1
         sessionRepository.save(session)
 
+        log.debug("Successfully retrieved Session ID: $sessionId with Role: $role")
         return entityMappers.loadFullSession(session, role, userId)
     }
 
     @Transactional
     fun toggleFavorite(userId: Int, sessionId: Int): Boolean {
+        log.info("Attempting to toggle favorite for Session ID: $sessionId by User ID: $userId")
+
         val role = getUserRoleForSession(userId, sessionId)
-        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this session")
+        if (role == AccessRole.NONE) {
+            log.warn("Favorite toggle rejected: User ID $userId does not have access to Session ID: $sessionId")
+            throw UnauthorizedException("You do not have access to this session")
+        }
 
         val isAlreadyFavorite = sessionRepository.isSessionFavoritedByUser(sessionId, userId)
         if (isAlreadyFavorite) {
             sessionRepository.removeFavorite(sessionId, userId)
+            log.info("Successfully removed favorite for Session ID: $sessionId by User ID: $userId")
         } else {
             sessionRepository.addFavorite(sessionId, userId)
+            log.info("Successfully added favorite for Session ID: $sessionId by User ID: $userId")
         }
         return !isAlreadyFavorite
     }

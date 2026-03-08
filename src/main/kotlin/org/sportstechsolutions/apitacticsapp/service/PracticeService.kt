@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.service
 
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.exception.ResourceNotFoundException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
@@ -22,8 +23,12 @@ class PracticeService(
     private val entityMappers: EntityMappers,
 ) {
 
+    private val log = LoggerFactory.getLogger(PracticeService::class.java)
+
     @Transactional(readOnly = true)
     fun getPracticesForTabs(userId: Int, pageable: Pageable): TabbedResponse<PracticeSummaryResponse> {
+        log.debug("Fetching tabbed practices for User ID: $userId")
+
         val personalPage = practiceRepository.findByOwnerId(userId, pageable)
         val personalPaged = PagedResponse(
             content = personalPage.content.map { entityMappers.toPracticeSummary(it, AccessRole.OWNER, userId) },
@@ -59,11 +64,14 @@ class PracticeService(
             isLast = groupSharedPage.isLast
         )
 
+        log.debug("Successfully loaded tabbed practices for User ID: $userId")
         return TabbedResponse(personalPaged, userSharedPaged, groupSharedPaged)
     }
 
     @Transactional(readOnly = true)
     fun searchPractices(userId: Int, request: PracticeSearchRequest, pageable: Pageable): PagedResponse<PracticeSummaryResponse> {
+        log.debug("Executing practice search for User ID: $userId with SortBy: ${request.sortBy}")
+
         // Build Spec using DB-level EXISTS subqueries, removing the in-memory array
         val spec = SearchSpecifications.buildPracticeSearchSpec(request, userId)
 
@@ -99,6 +107,7 @@ class PracticeService(
             entityMappers.toPracticeSummary(practice, role, userId)
         }
 
+        log.debug("Practice search completed. Found ${practicePage.totalElements} total elements.")
         return PagedResponse(
             content = content,
             pageNumber = practicePage.number,
@@ -111,7 +120,12 @@ class PracticeService(
 
     @Transactional
     fun createPractice(userId: Int, request: PracticeRequest): PracticeResponse {
-        val user = userRepository.findById(userId).orElseThrow { ResourceNotFoundException("User not found") }
+        log.info("Attempting to create a new practice for User ID: $userId")
+
+        val user = userRepository.findById(userId).orElseThrow {
+            log.error("Create practice failed: User ID $userId not found in database.")
+            ResourceNotFoundException("User not found")
+        }
 
         val practice = Practice(
             name = request.name,
@@ -133,26 +147,36 @@ class PracticeService(
 
         val sessionsToAttach = request.sessions.map { dto ->
             val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
-            sessionRepository.findById(sessionId)
-                .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
+            sessionRepository.findById(sessionId).orElseThrow {
+                log.warn("Create practice failed: Child Session ID $sessionId not found.")
+                ResourceNotFoundException("Session $sessionId not found")
+            }
         }
 
         sessionsToAttach.forEach { session -> session.practices.add(practice) }
         practice.sessions.addAll(sessionsToAttach)
 
         val saved = practiceRepository.save(practice)
+        log.info("Successfully created Practice ID: ${saved.id} for User ID: $userId")
         return entityMappers.loadFullPractice(saved, AccessRole.OWNER, userId)
     }
 
     @Transactional
     fun updatePractice(userId: Int, practiceId: Int, request: PracticeRequest, groupId: Int? = null): PracticeResponse {
-        val practice = practiceRepository.findById(practiceId)
-            .orElseThrow { ResourceNotFoundException("Practice not found") }
+        log.info("Attempting to update Practice ID: $practiceId for User ID: $userId")
+
+        val practice = practiceRepository.findById(practiceId).orElseThrow {
+            log.warn("Update failed: Practice ID $practiceId not found.")
+            ResourceNotFoundException("Practice not found")
+        }
 
         // Prevent redundant database fetch
         val role = getUserRoleForPractice(userId, practice, groupId)
 
-        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to edit this practice")
+        if (!role.canEdit()) {
+            log.warn("Update rejected: User ID $userId lacks edit permission (Role: $role) for Practice ID: $practiceId")
+            throw UnauthorizedException("You do not have permission to edit this practice")
+        }
 
         practice.name = request.name
         practice.description = request.description
@@ -178,57 +202,83 @@ class PracticeService(
 
         val sessionsToAttach = request.sessions.map { dto ->
             val sessionId = dto.id ?: throw IllegalArgumentException("Session ID required")
-            sessionRepository.findById(sessionId)
-                .orElseThrow { ResourceNotFoundException("Session $sessionId not found") }
+            sessionRepository.findById(sessionId).orElseThrow {
+                log.warn("Update practice failed: Child Session ID $sessionId not found.")
+                ResourceNotFoundException("Session $sessionId not found")
+            }
         }
 
         sessionsToAttach.forEach { session -> session.practices.add(practice) }
         practice.sessions.addAll(sessionsToAttach)
 
         val updated = practiceRepository.save(practice)
+        log.info("Successfully updated Practice ID: $practiceId")
         return entityMappers.loadFullPractice(updated, role, userId)
     }
 
     @Transactional
     fun deletePractice(userId: Int, practiceId: Int, groupId: Int? = null) {
-        val practice = practiceRepository.findById(practiceId)
-            .orElseThrow { ResourceNotFoundException("Practice not found") }
+        log.info("Attempting to delete Practice ID: $practiceId for User ID: $userId")
+
+        val practice = practiceRepository.findById(practiceId).orElseThrow {
+            log.warn("Delete failed: Practice ID $practiceId not found.")
+            ResourceNotFoundException("Practice not found")
+        }
 
         val role = getUserRoleForPractice(userId, practice, groupId)
 
-        if (!role.canEdit()) throw UnauthorizedException("You do not have permission to delete this practice")
+        if (!role.canEdit()) {
+            log.warn("Delete rejected: User ID $userId lacks edit permission (Role: $role) for Practice ID: $practiceId")
+            throw UnauthorizedException("You do not have permission to delete this practice")
+        }
 
         practice.sessions.forEach { session -> session.practices.remove(practice) }
 
         userPracticeAccessRepository.deleteAllByPractice(practice)
         practiceRepository.delete(practice)
+        log.info("Successfully deleted Practice ID: $practiceId")
     }
 
     @Transactional
     fun getPracticeById(practiceId: Int, userId: Int, groupId: Int? = null): PracticeResponse {
-        val practice = practiceRepository.findById(practiceId)
-            .orElseThrow { ResourceNotFoundException("Practice not found") }
+        log.debug("Fetching Practice ID: $practiceId for User ID: $userId")
+
+        val practice = practiceRepository.findById(practiceId).orElseThrow {
+            log.warn("Fetch failed: Practice ID $practiceId not found.")
+            ResourceNotFoundException("Practice not found")
+        }
 
         val role = getUserRoleForPractice(userId, practice, groupId)
 
-        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
+        if (role == AccessRole.NONE) {
+            log.warn("Access denied: User ID $userId attempted to view private Practice ID: $practiceId")
+            throw UnauthorizedException("You do not have access to this practice")
+        }
 
         practice.viewCount += 1
         practiceRepository.save(practice)
 
+        log.debug("Successfully retrieved Practice ID: $practiceId with Role: $role")
         return entityMappers.loadFullPractice(practice, role, userId)
     }
 
     @Transactional
     fun toggleFavorite(userId: Int, practiceId: Int): Boolean {
+        log.info("Attempting to toggle favorite for Practice ID: $practiceId by User ID: $userId")
+
         val role = getUserRoleForPractice(userId, practiceId)
-        if (role == AccessRole.NONE) throw UnauthorizedException("You do not have access to this practice")
+        if (role == AccessRole.NONE) {
+            log.warn("Favorite toggle rejected: User ID $userId does not have access to Practice ID: $practiceId")
+            throw UnauthorizedException("You do not have access to this practice")
+        }
 
         val isAlreadyFavorite = practiceRepository.isPracticeFavoritedByUser(practiceId, userId)
         if (isAlreadyFavorite) {
             practiceRepository.removeFavorite(practiceId, userId)
+            log.info("Successfully removed favorite for Practice ID: $practiceId by User ID: $userId")
         } else {
             practiceRepository.addFavorite(practiceId, userId)
+            log.info("Successfully added favorite for Practice ID: $practiceId by User ID: $userId")
         }
         return !isAlreadyFavorite
     }

@@ -1,6 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
@@ -17,10 +18,14 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/sessions")
 class SessionController(private val sessionService: SessionService) {
 
+    private val log = LoggerFactory.getLogger(SessionController::class.java)
+
     @GetMapping
     fun getTabbedSessions(
         @PageableDefault(size = 10, page = 0) pageable: Pageable
     ): ResponseEntity<TabbedResponse<SessionSummaryResponse>> {
+        log.info("Get tabbed sessions request received. Page: ${pageable.pageNumber}, Size: ${pageable.pageSize}")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to view tabbed sessions")
 
@@ -32,9 +37,12 @@ class SessionController(private val sessionService: SessionService) {
         @RequestBody @Valid request: SessionSearchRequest,
         @PageableDefault(size = 10, page = 0) pageable: Pageable
     ): ResponseEntity<PagedResponse<SessionSummaryResponse>> {
+        log.info("Search sessions request received. Term: '${request.searchTerm}', Scope: ${request.searchScope}")
+
         val userId = SecurityUtils.getCurrentUserId()
 
         val finalRequest = if (userId == null) {
+            log.debug("Guest user detected for search, overriding scope to ALL_ACCESSIBLE.")
             request.copy(searchScope = SearchScope.ALL_ACCESSIBLE)
         } else {
             request
@@ -48,12 +56,16 @@ class SessionController(private val sessionService: SessionService) {
         @PathVariable id: Int,
         @RequestParam(required = false) groupId: Int? = null
     ): ResponseEntity<SessionResponse> {
+        log.info("Get session request received for ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId() ?: 0
         return ResponseEntity.ok(sessionService.getSessionById(id, userId, groupId))
     }
 
     @PostMapping
     fun createSession(@RequestBody @Valid request: SessionRequest): ResponseEntity<SessionResponse> {
+        log.info("Create session request received. Name: '${request.name}'")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to create a session")
 
@@ -67,6 +79,8 @@ class SessionController(private val sessionService: SessionService) {
         @RequestBody @Valid request: SessionRequest,
         @RequestParam(required = false) groupId: Int? = null
     ): ResponseEntity<SessionResponse> {
+        log.info("Update session request received for ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to update a session")
 
@@ -76,6 +90,8 @@ class SessionController(private val sessionService: SessionService) {
 
     @PostMapping("/{id}/favorite")
     fun toggleFavorite(@PathVariable id: Int): ResponseEntity<Map<String, Boolean>> {
+        log.info("Toggle favorite request received for Session ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to favorite a session")
 
@@ -89,6 +105,8 @@ class SessionController(private val sessionService: SessionService) {
         @PathVariable id: Int,
         @RequestParam(required = false) groupId: Int? = null
     ) {
+        log.info("Delete session request received for ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to delete content")
 

@@ -33,13 +33,15 @@ data class FieldValidationError(
 @ControllerAdvice
 class GlobalExceptionHandler {
 
-    private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+    private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
 
     // ------------------------------------------------------------
     // 1. SPRING VALIDATION ERRORS (@Valid DTO constraints)
     // ------------------------------------------------------------
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationExceptions(ex: MethodArgumentNotValidException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Validation error on [${request.method}] ${request.requestURI}: ${ex.message}")
+
         val errors = ex.bindingResult.allErrors.mapNotNull { error ->
             if (error is FieldError) {
                 FieldValidationError(
@@ -66,6 +68,7 @@ class GlobalExceptionHandler {
     // ------------------------------------------------------------
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Malformed JSON received on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed JSON request. Please check your syntax.", request)
     }
 
@@ -73,17 +76,20 @@ class GlobalExceptionHandler {
     fun handleTypeMismatch(ex: MethodArgumentTypeMismatchException, request: HttpServletRequest): ResponseEntity<ApiError> {
         val requiredType = ex.requiredType?.simpleName ?: "Unknown"
         val message = "Parameter '${ex.name}' should be of type $requiredType"
+        log.warn("Type mismatch on [${request.method}] ${request.requestURI}: $message")
         return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request)
     }
 
     @ExceptionHandler(MissingServletRequestParameterException::class)
     fun handleMissingParams(ex: MissingServletRequestParameterException, request: HttpServletRequest): ResponseEntity<ApiError> {
         val message = "Required request parameter '${ex.parameterName}' is missing"
+        log.warn("Missing parameter on [${request.method}] ${request.requestURI}: $message")
         return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request)
     }
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Illegal argument on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.message ?: "Invalid request parameters", request)
     }
 
@@ -92,8 +98,8 @@ class GlobalExceptionHandler {
     // ------------------------------------------------------------
     @ExceptionHandler(DataIntegrityViolationException::class)
     fun handleDataIntegrityViolation(ex: DataIntegrityViolationException, request: HttpServletRequest): ResponseEntity<ApiError> {
-        // This catches things like Duplicate Emails or Foreign Key constraint failures
-        logger.error("Database constraint violation", ex)
+        // Logged as an ERROR because this indicates a structural database conflict (e.g., missing foreign key, duplicate unique index)
+        log.error("Database constraint violation on [${request.method}] ${request.requestURI}", ex)
         return buildErrorResponse(HttpStatus.CONFLICT, "Database constraint violation. A record may already exist or is currently in use.", request)
     }
 
@@ -102,16 +108,19 @@ class GlobalExceptionHandler {
     // ------------------------------------------------------------
     @ExceptionHandler(ConflictException::class)
     fun handleConflict(ex: ConflictException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Resource conflict on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.CONFLICT, ex.message ?: "Resource is currently in use", request)
     }
 
     @ExceptionHandler(ResourceNotFoundException::class)
     fun handleNotFound(ex: ResourceNotFoundException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Resource not found on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.message ?: "Resource not found", request)
     }
 
     @ExceptionHandler(IllegalStateException::class)
     fun handleIllegalState(ex: IllegalStateException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Illegal state encountered on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.CONFLICT, ex.message ?: "Invalid resource state", request)
     }
 
@@ -120,6 +129,7 @@ class GlobalExceptionHandler {
     // ------------------------------------------------------------
     @ExceptionHandler(UnauthenticatedException::class)
     fun handleUnauthenticated(ex: UnauthenticatedException, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Unauthenticated access attempt on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.message ?: "You must be logged in", request)
     }
 
@@ -128,6 +138,7 @@ class GlobalExceptionHandler {
         org.springframework.security.access.AccessDeniedException::class // Catches Spring Security annotations
     )
     fun handleUnauthorized(ex: Exception, request: HttpServletRequest): ResponseEntity<ApiError> {
+        log.warn("Forbidden access attempt on [${request.method}] ${request.requestURI}: ${ex.message}")
         return buildErrorResponse(HttpStatus.FORBIDDEN, ex.message ?: "You do not have permission to perform this action", request)
     }
 
@@ -136,7 +147,8 @@ class GlobalExceptionHandler {
     // ------------------------------------------------------------
     @ExceptionHandler(Exception::class)
     fun handleAll(ex: Exception, request: HttpServletRequest): ResponseEntity<ApiError> {
-        logger.error("Unexpected error occurred at ${request.requestURI}", ex)
+        // Logged as an ERROR with the full stack trace because this caught a bug we didn't anticipate
+        log.error("Unexpected server error occurred at [${request.method}] ${request.requestURI}", ex)
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected internal server error occurred.", request)
     }
 

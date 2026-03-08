@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.security
 
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.exception.ConflictException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.model.RefreshToken
@@ -19,39 +20,38 @@ class AuthService(
     private val hashEncoder: HashEncoder,
     private val refreshTokenRepository: RefreshTokenRepository
 ) {
-    data class TokenPair(
-        val accessToken: String,
-        val refreshToken: String
-    )
+    private val log = LoggerFactory.getLogger(AuthService::class.java)
+
+    data class TokenPair(val accessToken: String, val refreshToken: String)
 
     @Transactional
     fun register(email: String, password: String): User {
         val trimmedEmail = email.trim()
+        log.info("Attempting to register new user with email: $trimmedEmail")
 
-        // Fast DB-level check (avoids pulling entity into memory)
         if (userRepository.existsByEmail(trimmedEmail)) {
+            log.warn("Registration failed: Email $trimmedEmail already exists.")
             throw ConflictException("A user with that email already exists.")
         }
 
-        return userRepository.save(
-            User(
-                email = trimmedEmail,
-                hashedPassword = hashEncoder.encode(password)
-            )
-        )
+        val user = userRepository.save(User(email = trimmedEmail, hashedPassword = hashEncoder.encode(password)))
+        log.info("Successfully registered user with ID: ${user.id}")
+        return user
     }
 
     @Transactional
     fun login(email: String, password: String): TokenPair {
-        val user = userRepository.findByEmail(email.trim())
+        val trimmedEmail = email.trim()
+        log.info("Login attempt for email: $trimmedEmail")
+
+        val user = userRepository.findByEmail(trimmedEmail)
             ?: throw UnauthenticatedException("Invalid credentials.")
 
         if (!hashEncoder.matches(password, user.hashedPassword)) {
+            log.warn("Login failed for user ID: ${user.id} - Incorrect password.")
             throw UnauthenticatedException("Invalid credentials.")
         }
 
-        // Hibernate's "Dirty Checking" will automatically issue an UPDATE statement
-        // for this when the transaction commits. No need to call userRepository.save()!
         user.lastLogin = Instant.now()
 
         val newAccessToken = jwtService.generateAccessToken(user.id.toString())
@@ -59,32 +59,31 @@ class AuthService(
 
         storeRefreshToken(user.id, newRefreshToken)
 
-        return TokenPair(
-            accessToken = newAccessToken,
-            refreshToken = newRefreshToken
-        )
+        log.info("User ID: ${user.id} logged in successfully.")
+        return TokenPair(accessToken = newAccessToken, refreshToken = newRefreshToken)
     }
 
     @Transactional
     fun refresh(refreshToken: String): TokenPair {
+        log.info("Attempting to refresh tokens.")
+
         if (!jwtService.validateRefreshToken(refreshToken)) {
+            log.warn("Token refresh failed: Invalid JWT signature or expiration.")
             throw UnauthenticatedException("Invalid refresh token.")
         }
 
         val userId = jwtService.getUserIdFromToken(refreshToken)
-
         val hashed = hashToken(refreshToken)
 
-        // Fast existence check instead of fetching the whole entity
         if (!refreshTokenRepository.existsByUserIdAndHashedToken(userId, hashed)) {
+            log.warn("Token refresh failed: Token not found in database for User ID: $userId")
             throw UnauthenticatedException("Refresh token not recognized (maybe used or expired?)")
         }
 
-        // Direct SQL delete
         refreshTokenRepository.deleteByUserIdAndHashedToken(userId, hashed)
 
-        // Ensure the user wasn't deleted from the DB while holding a valid token
         if (!userRepository.existsById(userId)) {
+            log.error("Token refresh failed: User ID: $userId no longer exists in database!")
             throw UnauthenticatedException("User account no longer exists.")
         }
 
@@ -93,10 +92,8 @@ class AuthService(
 
         storeRefreshToken(userId, newRefreshToken)
 
-        return TokenPair(
-            accessToken = newAccessToken,
-            refreshToken = newRefreshToken
-        )
+        log.info("Successfully refreshed tokens for User ID: $userId")
+        return TokenPair(accessToken = newAccessToken, refreshToken = newRefreshToken)
     }
 
     private fun storeRefreshToken(userId: Int, rawRefreshToken: String) {
@@ -105,12 +102,9 @@ class AuthService(
         val expiresAt = Instant.now().plusMillis(expiryMs)
 
         refreshTokenRepository.save(
-            RefreshToken(
-                userId = userId,
-                expiresAt = expiresAt,
-                hashedToken = hashed
-            )
+            RefreshToken(userId = userId, expiresAt = expiresAt, hashedToken = hashed)
         )
+        log.debug("Stored new refresh token in database for User ID: $userId")
     }
 
     private fun hashToken(token: String): String {

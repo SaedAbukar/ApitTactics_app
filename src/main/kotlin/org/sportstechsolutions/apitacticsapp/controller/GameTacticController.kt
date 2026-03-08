@@ -1,6 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.exception.UnauthorizedException
@@ -17,10 +18,14 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/game-tactics")
 class GameTacticController(private val gameTacticService: GameTacticService) {
 
+    private val log = LoggerFactory.getLogger(GameTacticController::class.java)
+
     @GetMapping
     fun getTabbedGameTactics(
         @PageableDefault(size = 10, page = 0) pageable: Pageable
     ): ResponseEntity<TabbedResponse<GameTacticSummaryResponse>> {
+        log.info("Get tabbed game tactics request received. Page: ${pageable.pageNumber}, Size: ${pageable.pageSize}")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to view tabbed game tactics")
 
@@ -32,9 +37,12 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
         @RequestBody request: GameTacticSearchRequest,
         @PageableDefault(size = 10, page = 0) pageable: Pageable
     ): ResponseEntity<PagedResponse<GameTacticSummaryResponse>> {
+        log.info("Search game tactics request received. Term: '${request.searchTerm}', Scope: ${request.searchScope}")
+
         val userId = SecurityUtils.getCurrentUserId()
 
         val finalRequest = if (userId == null) {
+            log.debug("Guest user detected for search, overriding scope to ALL_ACCESSIBLE.")
             request.copy(searchScope = SearchScope.ALL_ACCESSIBLE)
         } else {
             request
@@ -48,12 +56,16 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
         @PathVariable id: Int,
         @RequestParam(required = false) groupId: Int? = null
     ): ResponseEntity<GameTacticResponse> {
+        log.info("Get game tactic request received for ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId() ?: 0
         return ResponseEntity.ok(gameTacticService.getGameTacticById(id, userId, groupId))
     }
 
     @PostMapping
     fun createGameTactic(@RequestBody @Valid request: GameTacticRequest): ResponseEntity<GameTacticResponse> {
+        log.info("Create game tactic request received. Name: '${request.name}'")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to create a game tactic")
 
@@ -67,6 +79,8 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
         @RequestBody @Valid request: GameTacticRequest,
         @RequestParam(required = false) groupId: Int? = null
     ): ResponseEntity<GameTacticResponse> {
+        log.info("Update game tactic request received for ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to update a game tactic")
 
@@ -76,6 +90,8 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
 
     @PostMapping("/{id}/favorite")
     fun toggleFavorite(@PathVariable id: Int): ResponseEntity<Map<String, Boolean>> {
+        log.info("Toggle favorite request received for Game Tactic ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to favorite a game tactic")
 
@@ -89,6 +105,8 @@ class GameTacticController(private val gameTacticService: GameTacticService) {
         @PathVariable id: Int,
         @RequestParam(required = false) groupId: Int? = null
     ) {
+        log.info("Delete game tactic request received for ID: $id")
+
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You must be logged in to delete content")
 

@@ -3,6 +3,7 @@ package org.sportstechsolutions.apitacticsapp.security
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -15,6 +16,7 @@ import javax.crypto.SecretKey
 class JwtService(
     @Value("\${jwt.secret}") private val jwtSecret: String
 ) {
+    private val log = LoggerFactory.getLogger(JwtService::class.java)
 
     private val secretKey: SecretKey = try {
         val decodedKey = Base64.getDecoder().decode(jwtSecret)
@@ -39,10 +41,12 @@ class JwtService(
     }
 
     fun generateAccessToken(userId: String): String {
+        log.debug("Generating access token for user: $userId")
         return generateToken(userId, "access", accessTokenValidityMs)
     }
 
     fun generateRefreshToken(userId: String): String {
+        log.debug("Generating refresh token for user: $userId")
         return generateToken(userId, "refresh", refreshTokenValidityMs)
     }
 
@@ -76,7 +80,7 @@ class JwtService(
                 .parseSignedClaims(rawToken)
                 .payload
         } catch (e: Exception) {
-            println("JWT Validation failed: ${e.message}")
+            log.warn("JWT Validation failed: ${e.message}")
             null
         }
     }

@@ -1,6 +1,7 @@
 package org.sportstechsolutions.apitacticsapp.controller
 
 import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.sportstechsolutions.apitacticsapp.dtos.*
 import org.sportstechsolutions.apitacticsapp.exception.UnauthenticatedException
 import org.sportstechsolutions.apitacticsapp.security.AuthService
@@ -16,53 +17,36 @@ class AuthController(
     private val authService: AuthService,
     private val userService: UserService
 ) {
+    private val log = LoggerFactory.getLogger(AuthController::class.java)
 
-    // ---------------- SIGNUP ----------------
     @PostMapping("/signup")
     fun signup(@Valid @RequestBody request: SignupRequest): ResponseEntity<UserResponse> {
+        log.info("Signup request received for email: ${request.email}")
         val user = authService.register(request.email, request.password)
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(UserResponse.from(user))
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(user))
     }
 
-    // ---------------- LOGIN ----------------
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<TokenResponse> {
+        log.info("Login request received for email: ${request.email}")
         val tokens = authService.login(request.email, request.password)
-
-        val response = TokenResponse(
-            accessToken = tokens.accessToken,
-            refreshToken = tokens.refreshToken
-        )
-
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(TokenResponse(tokens.accessToken, tokens.refreshToken))
     }
 
-    // ---------------- REFRESH ----------------
     @PostMapping("/refresh")
     fun refresh(@Valid @RequestBody request: RefreshTokenRequest): ResponseEntity<TokenResponse> {
+        log.info("Refresh token request received.")
         val tokens = authService.refresh(request.refreshToken)
-
-        val response = TokenResponse(
-            accessToken = tokens.accessToken,
-            refreshToken = tokens.refreshToken
-        )
-
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(TokenResponse(tokens.accessToken, tokens.refreshToken))
     }
 
-    // ---------------- CURRENT USER ----------------
     @GetMapping("/me")
     fun me(): ResponseEntity<UserResponse> {
-        // 1. Correctly throw 401 Unauthenticated instead of 403 Forbidden
+        log.info("Current user profile request received.")
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You are not authenticated. Please log in.")
 
-        // 2. Fetch the user.
-        // The refactored UserService automatically throws a 404 ResourceNotFoundException
-        // if the user ID from the token no longer exists in the database.
         val user = userService.getUserWithGroupsById(userId)
-
         return ResponseEntity.ok(UserResponse.from(user))
     }
 }
