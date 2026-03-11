@@ -1,5 +1,6 @@
 package org.sportstechsolutions.apitacticsapp.repository
 
+import org.sportstechsolutions.apitacticsapp.model.AuthProvider
 import org.sportstechsolutions.apitacticsapp.model.User
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Slice
@@ -12,6 +13,8 @@ interface UserRepository : JpaRepository<User, Int> {
     fun findByEmail(email: String): User?
 
     fun existsByEmail(email: String): Boolean
+
+    fun findByProviderIdAndAuthProvider(providerId: String, authProvider: AuthProvider): User?
 
     fun findByEmailStartingWithIgnoreCaseAndIsPublicTrueAndIdNot(
         query: String,

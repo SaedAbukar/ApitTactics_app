@@ -7,9 +7,16 @@ import java.time.Instant
 data class User(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Int = 0,
-
+    @Column(name = "name")
+    var name: String? = null,
     var email: String = "",
     var hashedPassword: String = "",
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    var authProvider: AuthProvider = AuthProvider.LOCAL,
+
+    var providerId: String? = null,
 
     @Enumerated(EnumType.STRING)
     var role: UserRole = UserRole.USER,
@@ -32,4 +39,14 @@ data class User(
     @Column(name = "created_at", updatable = false, nullable = false)
     val createdAt: Instant = Instant.now(),
     var lastLogin: Instant? = null
-)
+){
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is User) return false
+        if (id != 0 && other.id != 0) return id == other.id
+        return email == other.email
+    }
+
+    override fun hashCode(): Int = javaClass.hashCode()
+}
+

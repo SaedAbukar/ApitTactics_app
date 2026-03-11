@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size
 import org.sportstechsolutions.apitacticsapp.model.User
 
 data class SignupRequest(
+    @field:NotBlank(message = "Name is required") val name: String,
     @field:Email
     @field:NotBlank
     val email: String,
@@ -25,10 +26,14 @@ data class LoginRequest(
     val password: String
 )
 
+data class OAuth2ExchangeRequest(@field:NotBlank val code: String)
+
 data class RefreshTokenRequest(
     @field:NotBlank
     val refreshToken: String
 )
+
+data class LogoutRequest(@field:NotBlank val refreshToken: String)
 
 data class TokenResponse(
     val accessToken: String,
@@ -36,8 +41,10 @@ data class TokenResponse(
 )
 data class UserResponse(
     val id: Int,
+    val name: String?,
     val email: String,
     val role: String,
+    val authProvider: String,
 
     // Add this field
     @get:JsonProperty("isPublic")
@@ -55,8 +62,10 @@ data class UserResponse(
         fun from(user: User): UserResponse {
             return UserResponse(
                 id = user.id,
+                name = user.name,
                 email = user.email,
                 role = user.role.name,
+                authProvider = user.authProvider.name,
                 isPublic = user.isPublic,
 
                 groups = user.groups.map { GroupInfo(it.name) },

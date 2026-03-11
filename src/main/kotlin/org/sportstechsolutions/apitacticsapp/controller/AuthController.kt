@@ -17,12 +17,21 @@ class AuthController(
     private val authService: AuthService,
     private val userService: UserService
 ) {
+
     private val log = LoggerFactory.getLogger(AuthController::class.java)
+
+    @PostMapping("/oauth2/exchange")
+    fun exchangeOAuth2Code(@Valid @RequestBody request: OAuth2ExchangeRequest): ResponseEntity<TokenResponse> {
+        log.info("OAuth2 token exchange request received.")
+        val tokens = authService.exchangeOAuth2Code(request.code)
+        return ResponseEntity.ok(TokenResponse(tokens.accessToken, tokens.refreshToken))
+    }
 
     @PostMapping("/signup")
     fun signup(@Valid @RequestBody request: SignupRequest): ResponseEntity<UserResponse> {
         log.info("Signup request received for email: ${request.email}")
-        val user = authService.register(request.email, request.password)
+        // ---> PASSED NAME HERE <---
+        val user = authService.register(request.name, request.email, request.password)
         return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(user))
     }
 
@@ -35,17 +44,23 @@ class AuthController(
 
     @PostMapping("/refresh")
     fun refresh(@Valid @RequestBody request: RefreshTokenRequest): ResponseEntity<TokenResponse> {
-        log.info("Refresh token request received.")
+        log.info("Refresh token request received")
         val tokens = authService.refresh(request.refreshToken)
         return ResponseEntity.ok(TokenResponse(tokens.accessToken, tokens.refreshToken))
     }
 
+    @PostMapping("/logout")
+    fun logout(@Valid @RequestBody request: LogoutRequest): ResponseEntity<Unit> {
+        log.info("Logout request received")
+        authService.logout(request.refreshToken)
+        return ResponseEntity.noContent().build()
+    }
+
     @GetMapping("/me")
     fun me(): ResponseEntity<UserResponse> {
-        log.info("Current user profile request received.")
+        log.info("Current user profile request received")
         val userId = SecurityUtils.getCurrentUserId()
             ?: throw UnauthenticatedException("You are not authenticated. Please log in.")
-
         val user = userService.getUserWithGroupsById(userId)
         return ResponseEntity.ok(UserResponse.from(user))
     }
